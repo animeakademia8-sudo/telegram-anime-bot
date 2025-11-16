@@ -172,7 +172,7 @@ async def show_episode(
     """
     Показати конкретну серію.
     Видаляємо попереднє повідомлення бота, потім шлемо нове відео.
-    Використовується тільки з /start (deep-link).
+    Використовується з /start (deep-link).
     """
     anime = ANIME.get(slug)
     if not anime:
@@ -215,13 +215,6 @@ async def send_start_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
     chat_id = update.effective_chat.id
     text = update.message.text or ""
 
-    # ⚠️ ТЕПЕР /start НЕ ВИДАЛЯЄМО, ЩОБ ЧАТ НЕ СТАВАВ ПУСТИМ І НЕ ЗАКРИВАВСЯ
-    # Якщо захочеш – можна повернути:
-    # try:
-    #     await update.message.delete()
-    # except Exception:
-    #     pass
-
     # Перевіряємо, чи є аргумент після /start (deep-link)
     payload = None
     parts = text.split(maxsplit=1)
@@ -236,13 +229,18 @@ async def send_start_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         except ValueError:
             # Якщо щось не так – просто меню
             await show_main_menu(chat_id, context)
-            return
-
-        # Відкриваємо конкретну серію (з видаленням старої)
-        await show_episode(chat_id, context, slug, ep)
+        else:
+            # Відкриваємо конкретну серію (з видаленням старої бот-повідоми)
+            await show_episode(chat_id, context, slug, ep)
     else:
-        # Звичайний /start → меню (з видаленням старого повідомлення бота)
+        # Звичайний /start → меню (з видаленням старого бот-повідомлення)
         await show_main_menu(chat_id, context)
+
+    # ПІСЛЯ того як ми вже відправили відповідь, намагаємось видалити /start
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
 
 
 # ===============================
