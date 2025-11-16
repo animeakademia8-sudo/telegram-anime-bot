@@ -20,14 +20,11 @@ from telegram.ext import (
 # 1. НАЛАШТУВАННЯ
 # ===============================
 
-BOT_TOKEN = os.environ.get("8421608017:AAGd5ikJ7bAU2OIpkCU8NI4Okbzi2Ed9upQ", "").strip()
+raw_token = os.environ.get("8421608017:AAGd5ikJ7bAU2OIpkCU8NI4Okbzi2Ed9upQ")  # без strip, щоб побачити все як є
 
-if not BOT_TOKEN:
-    # Дуже корисний дебаг: в логах побачимо, які змінні взагалі є
-    raise RuntimeError(
-        "❌ BOT_TOKEN ENV variable is not set! "
-        f"Current ENV keys: {', '.join(sorted(os.environ.keys()))}"
-    )
+raise RuntimeError(f"DEBUG BOT_TOKEN VALUE: {repr(raw_token)}")
+
+
 
 
 # Локальна картинка-банер для старту
