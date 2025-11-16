@@ -20,11 +20,12 @@ from telegram.ext import (
 # 1. НАЛАШТУВАННЯ
 # ===============================
 
-raw_token = os.environ.get("8421608017:AAGd5ikJ7bAU2OIpkCU8NI4Okbzi2Ed9upQ")  # без strip, щоб побачити все як є
+# 1) пробуємо взяти токен з ENV
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
-raise RuntimeError(f"DEBUG BOT_TOKEN VALUE: {repr(raw_token)}")
-
-
+# 2) якщо ENV немає (як на Railway зараз) – використовуємо запасний
+if not BOT_TOKEN:
+    BOT_TOKEN = "8421608017:AAGd5ikJ7bAU2OIpkCU8NI4Okbzi2Ed9upQ"
 
 
 # Локальна картинка-банер для старту
