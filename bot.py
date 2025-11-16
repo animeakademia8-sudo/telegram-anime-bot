@@ -26,6 +26,9 @@ if not BOT_TOKEN:
 
 WELCOME_PHOTO = "images/welcome.jpg"
 
+# тут зберігаємо id останнього повідомлення бота в кожному чаті
+LAST_MESSAGE: dict[int, int] = {}  # {chat_id: message_id}
+
 ANIME = {
     "neumelyi": {
         "title": "Неумелый семпай",
@@ -125,24 +128,33 @@ def build_episode_list_keyboard(slug: str) -> InlineKeyboardMarkup:
 
 
 # ===============================
-# 3. ХЕЛПЕРИ ДЛЯ /start
+# 3. ХЕЛПЕРИ ДЛЯ ОДНОГО ПОВІДОМЛЕННЯ
 # ===============================
+
+
+async def set_last_message(chat_id: int, message_id: int):
+    """Запам'ятати id останнього повідомлення бота в чаті."""
+    LAST_MESSAGE[chat_id] = message_id
 
 
 async def show_main_menu(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     """
     Показати стартовий екран.
-    Для /start просто надсилаємо фото з меню.
+    Використовується при /start.
+    Тут ТІЛЬКИ надсилаємо повідомлення і запам’ятовуємо його.
+    Видалення робимо в send_start_message.
     """
     caption = "Приятного просмотра ✨\nВыбери аниме:"
 
     with open(WELCOME_PHOTO, "rb") as photo:
-        await context.bot.send_photo(
+        sent = await context.bot.send_photo(
             chat_id=chat_id,
             photo=photo,
             caption=caption,
             reply_markup=build_anime_menu(),
         )
+
+    await set_last_message(chat_id, sent.message_id)
 
 
 async def show_episode(
@@ -152,8 +164,9 @@ async def show_episode(
     ep: int,
 ):
     """
-    Показати конкретну серію при старті (deep-link).
-    Далі все управління йде через callback-и з редагуванням того самого повідомлення.
+    Показати конкретну серію при /start (deep-link).
+    Тут так само — тільки відправляємо нове повідомлення.
+    Видалення старого робить send_start_message.
     """
     anime = ANIME.get(slug)
     if not anime:
@@ -168,12 +181,14 @@ async def show_episode(
     source = episode["source"]
     caption = f"{anime['title']}\nСерия {ep}"
 
-    await context.bot.send_video(
+    sent = await context.bot.send_video(
         chat_id=chat_id,
         video=source,
         caption=caption,
         reply_markup=build_episode_keyboard(slug, ep),
     )
+
+    await set_last_message(chat_id, sent.message_id)
 
 
 # ===============================
@@ -185,13 +200,21 @@ async def send_start_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
     chat_id = update.effective_chat.id
     text = update.message.text or ""
 
-    # Видаляємо /start, щоб не захламляло чат
+    # 0. Видаляємо попереднє повідомлення бота, якщо є
+    msg_id = LAST_MESSAGE.get(chat_id)
+    if msg_id:
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
+        except Exception:
+            pass
+
+    # 1. Видаляємо /start, щоб не захламляло чат
     try:
         await update.message.delete()
     except Exception:
         pass
 
-    # Перевіряємо, чи є аргумент після /start (deep-link)
+    # 2. Перевіряємо, чи є аргумент після /start (deep-link)
     payload = None
     parts = text.split(maxsplit=1)
     if len(parts) > 1:
@@ -223,7 +246,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
-    chat_id = query.message.chat_id  # можна залишити як є
+    chat_id = query.message.chat_id
+
+    # ВАЖЛИВО: тут НІЧОГО не видаляємо, а тільки редагуємо query.message
+    # і оновлюємо LAST_MESSAGE до цього message_id
 
     # Меню: повертаємось до стартового фото + список аніме
     if data == "menu":
@@ -239,6 +265,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 media=media,
                 reply_markup=build_anime_menu(),
             )
+
+        await set_last_message(chat_id, query.message.message_id)
         return
 
     # Вибір аніме → показати 1 серію, редагуючи існуюче повідомлення
@@ -266,6 +294,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             media=media,
             reply_markup=build_episode_keyboard(slug, ep),
         )
+
+        await set_last_message(chat_id, query.message.message_id)
         return
 
     # Конкретна серія
@@ -293,6 +323,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             media=media,
             reply_markup=build_episode_keyboard(slug, ep),
         )
+
+        await set_last_message(chat_id, query.message.message_id)
         return
 
     # Список серій (міняємо тільки підпис і клавіатуру)
@@ -308,6 +340,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             caption=caption,
             reply_markup=build_episode_list_keyboard(slug),
         )
+
+        await set_last_message(chat_id, query.message.message_id)
         return
 
     # Следующая серия
@@ -336,6 +370,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             media=media,
             reply_markup=build_episode_keyboard(slug, next_ep),
         )
+
+        await set_last_message(chat_id, query.message.message_id)
         return
 
 
