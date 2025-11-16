@@ -17,7 +17,7 @@ from telegram.ext import (
 )
 
 # ===============================
-# 1. НАЛАШТУВАННЯ
+# 1. НАЛАШТУВАН
 # ===============================
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -38,40 +38,14 @@ ANIME = {
             3: {"source": "BAACAgIAAxkBAAMlaRj67-vSO4t9NKFnjP-6vOLnaFAAAhl8AAKaSjhINlo5cuQDLRI2BA"},
         },
     },
-    "temnoe_proshloe": {
-        "title": "Темное прошлое злодейки",
-        "episodes": {
-            1: {"source": "FILE_ID_TEMNOE_1"},
-            2: {"source": "FILE_ID_TEMNOE_2"},
-        },
-    },
-    "sluga": {
-        "title": "Слуга",
-        "episodes": {
-            1: {"source": "FILE_ID_SLUGA_1"},
-        },
-    },
-    "voina_12": {
-        "title": "Война двенадцати",
-        "episodes": {
-            1: {"source": "FILE_ID_VOINA_1"},
-        },
-    },
-    "nenasyt_berserk": {
-        "title": "Ненаситний берсерк",
-        "episodes": {
-            1: {"source": "FILE_ID_BERSERK_1"},
-        },
-    },
-    "neumelyi23": {
-        "title": "Неумелы444й семпай",
+    "neumrlyi": {
+        "title": "Неумелый с4мпай",
         "episodes": {
             1: {"source": "BAACAgIAAxkBAAMVaRj24OIri4siBrWlRsZDIX0u_VgAAv57AAKaSjhI2zDVA1kRZnI2BA"},
             2: {"source": "BAACAgIAAxkBAAMfaRj4h-gAAYH9gLc9O6FG1xHfewqqAAIJfAACmko4SKEM3U0QuAvWNgQ"},
             3: {"source": "BAACAgIAAxkBAAMlaRj67-vSO4t9NKFnjP-6vOLnaFAAAhl8AAKaSjhINlo5cuQDLRI2BA"},
-            4: {"source": "BAACAgIAAxkBAAMlaRj67-vSO4t9NKFnjP-6vOLnaFAAAhl8AAKaSjhINlo5cuQDLRI2BA"},
         },
-    },
+    },   
 }
 
 # ===============================
@@ -128,39 +102,45 @@ def build_episode_list_keyboard(slug: str) -> InlineKeyboardMarkup:
 
 
 # ===============================
-# 3. ХЕЛПЕРИ
+# 3. ХЕЛПЕРИ ДЛЯ ОДНОГО ПОВІДОМЛЕННЯ
 # ===============================
 
 
-async def set_last_message(chat_id: int, message_id: int):
-    LAST_MESSAGE[chat_id] = message_id
+async def set_last_message(chat_id: int, message):
+    """Запам'ятати id останнього повідомлення бота в чаті."""
+    LAST_MESSAGE[chat_id] = message.message_id
 
 
 async def show_main_menu(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     """
     Показати стартовий екран.
-    Видаляємо попереднє повідомлення бота (якщо є), потім шлемо нове.
+    Спочатку пробуємо редагувати останнє повідомлення бота.
+    Якщо не вийшло (нема / очищено чат) – шлемо нове.
     """
     caption = "Приятного просмотра ✨\nВыбери аниме:"
     msg_id = LAST_MESSAGE.get(chat_id)
 
-    # 1. Видалити попереднє повідомлення бота
-    if msg_id:
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
-        except Exception:
-            pass
-
-    # 2. Відправити нове фото з меню
     with open(WELCOME_PHOTO, "rb") as photo:
+        if msg_id:
+            try:
+                await context.bot.edit_message_media(
+                    chat_id=chat_id,
+                    message_id=msg_id,
+                    media=InputMediaPhoto(media=photo, caption=caption),
+                    reply_markup=build_anime_menu(),
+                )
+                return
+            except Exception:
+                # якщо редагування не вдалось – падаємо в send_photo нижче
+                pass
+
         sent = await context.bot.send_photo(
             chat_id=chat_id,
             photo=photo,
             caption=caption,
             reply_markup=build_anime_menu(),
         )
-
-    await set_last_message(chat_id, sent.message_id)
+        await set_last_message(chat_id, sent)
 
 
 async def show_episode(
@@ -171,8 +151,8 @@ async def show_episode(
 ):
     """
     Показати конкретну серію.
-    Видаляємо попереднє повідомлення бота, потім шлемо нове відео.
-    Використовується з /start (deep-link).
+    Спочатку пробуємо замінити медіа в останньому повідомленні,
+    якщо не вийшло – шлемо нове відео.
     """
     anime = ANIME.get(slug)
     if not anime:
@@ -188,22 +168,26 @@ async def show_episode(
     caption = f"{anime['title']}\nСерия {ep}"
     msg_id = LAST_MESSAGE.get(chat_id)
 
-    # 1. Видалити попереднє повідомлення бота
     if msg_id:
         try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
+            await context.bot.edit_message_media(
+                chat_id=chat_id,
+                message_id=msg_id,
+                media=InputMediaVideo(media=source, caption=caption),
+                reply_markup=build_episode_keyboard(slug, ep),
+            )
+            return
         except Exception:
+            # якщо редагування не вдалось – шлемо нове повідомлення
             pass
 
-    # 2. Відправити нове відео
     sent = await context.bot.send_video(
         chat_id=chat_id,
         video=source,
         caption=caption,
         reply_markup=build_episode_keyboard(slug, ep),
     )
-
-    await set_last_message(chat_id, sent.message_id)
+    await set_last_message(chat_id, sent)
 
 
 # ===============================
@@ -214,6 +198,12 @@ async def show_episode(
 async def send_start_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     text = update.message.text or ""
+
+    # Видаляємо /start, щоб не захламляло чат
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
 
     # Перевіряємо, чи є аргумент після /start (deep-link)
     payload = None
@@ -229,18 +219,13 @@ async def send_start_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         except ValueError:
             # Якщо щось не так – просто меню
             await show_main_menu(chat_id, context)
-        else:
-            # Відкриваємо конкретну серію (з видаленням старої бот-повідоми)
-            await show_episode(chat_id, context, slug, ep)
-    else:
-        # Звичайний /start → меню (з видаленням старого бот-повідомлення)
-        await show_main_menu(chat_id, context)
+            return
 
-    # ПІСЛЯ того як ми вже відправили відповідь, намагаємось видалити /start
-    try:
-        await update.message.delete()
-    except Exception:
-        pass
+        # Відкриваємо конкретну серію
+        await show_episode(chat_id, context, slug, ep)
+    else:
+        # Звичайний /start → меню
+        await show_main_menu(chat_id, context)
 
 
 # ===============================
@@ -254,80 +239,18 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     chat_id = query.message.chat_id
 
-    # В callback-ах НІЧОГО не видаляємо, тільки редагуємо існуюче повідомлення.
-    # Це якраз вирішує лаги/викидання на Android.
-
     if data == "menu":
-        caption = "Приятного просмотра ✨\nВыбери аниме:"
-
-        with open(WELCOME_PHOTO, "rb") as photo:
-            media = InputMediaPhoto(
-                media=photo,
-                caption=caption,
-            )
-
-            await query.message.edit_media(
-                media=media,
-                reply_markup=build_anime_menu(),
-            )
-
-        await set_last_message(chat_id, query.message.message_id)
+        await show_main_menu(chat_id, context)
         return
 
     if data.startswith("anime:"):
         slug = data.split(":", 1)[1]
-        ep = 1
-
-        anime = ANIME.get(slug)
-        if not anime:
-            return
-
-        episode = anime["episodes"].get(ep)
-        if not episode:
-            return
-
-        source = episode["source"]
-        caption = f"{anime['title']}\nСерия {ep}"
-
-        media = InputMediaVideo(
-            media=source,
-            caption=caption,
-        )
-
-        await query.message.edit_media(
-            media=media,
-            reply_markup=build_episode_keyboard(slug, ep),
-        )
-
-        await set_last_message(chat_id, query.message.message_id)
+        await show_episode(chat_id, context, slug, 1)
         return
 
     if data.startswith("ep:"):
-        _, slug, ep_str = data.split(":")
-        ep = int(ep_str)
-
-        anime = ANIME.get(slug)
-        if not anime:
-            return
-
-        episode = anime["episodes"].get(ep)
-        if not episode:
-            return
-
-        source = episode["source"]
-        caption = f"{anime['title']}\nСерия {ep}"
-
-        media = InputMediaVideo(
-            media=source,
-            caption=caption,
-        )
-
-        await query.message.edit_media(
-            media=media,
-            reply_markup=build_episode_keyboard(slug, ep),
-        )
-
-        await set_last_message(chat_id, query.message.message_id)
+        _, slug, ep = data.split(":")
+        await show_episode(chat_id, context, slug, int(ep))
         return
 
     if data.startswith("list:"):
@@ -337,42 +260,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         caption = f"{anime['title']}\nВыбери серию:"
-
         await query.message.edit_caption(
             caption=caption,
             reply_markup=build_episode_list_keyboard(slug),
         )
-
-        await set_last_message(chat_id, query.message.message_id)
+        LAST_MESSAGE[chat_id] = query.message.message_id
         return
 
     if data.startswith("next:"):
-        _, slug, ep_str = data.split(":")
-        next_ep = int(ep_str) + 1
-
-        anime = ANIME.get(slug)
-        if not anime:
-            return
-
-        episode = anime["episodes"].get(next_ep)
-        if not episode:
-            await query.answer("Дальше серий нет 😅", show_alert=False)
-            return
-
-        source = episode["source"]
-        caption = f"{anime['title']}\nСерия {next_ep}"
-
-        media = InputMediaVideo(
-            media=source,
-            caption=caption,
-        )
-
-        await query.message.edit_media(
-            media=media,
-            reply_markup=build_episode_keyboard(slug, next_ep),
-        )
-
-        await set_last_message(chat_id, query.message.message_id)
+        _, slug, ep = data.split(":")
+        next_ep = int(ep) + 1
+        await show_episode(chat_id, context, slug, next_ep)
         return
 
 
