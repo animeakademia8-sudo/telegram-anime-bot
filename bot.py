@@ -38,40 +38,15 @@ ANIME = {
             3: {"source": "BAACAgIAAxkBAAMlaRj67-vSO4t9NKFnjP-6vOLnaFAAAhl8AAKaSjhINlo5cuQDLRI2BA"},
         },
     },
-    "temnoe_proshloe": {
-        "title": "Темное прошлое злодейки",
-        "episodes": {
-            1: {"source": "FILE_ID_TEMNOE_1"},
-            2: {"source": "FILE_ID_TEMNOE_2"},
-        },
-    },
-    "sluga": {
-        "title": "Слуга",
-        "episodes": {
-            1: {"source": "FILE_ID_SLUGA_1"},
-        },
-    },
-    "voina_12": {
-        "title": "Война двенадцати",
-        "episodes": {
-            1: {"source": "FILE_ID_VOINA_1"},
-        },
-    },
-    "nenasyt_berserk": {
-        "title": "Ненаситний берсерк",
-        "episodes": {
-            1: {"source": "FILE_ID_BERSERK_1"},
-        },
-    },
-    "neumelyi23": {
-        "title": "Неумелы444й семпай",
+    "neumelyi": {
+        "title": "Неумелый семпай",
         "episodes": {
             1: {"source": "BAACAgIAAxkBAAMVaRj24OIri4siBrWlRsZDIX0u_VgAAv57AAKaSjhI2zDVA1kRZnI2BA"},
             2: {"source": "BAACAgIAAxkBAAMfaRj4h-gAAYH9gLc9O6FG1xHfewqqAAIJfAACmko4SKEM3U0QuAvWNgQ"},
             3: {"source": "BAACAgIAAxkBAAMlaRj67-vSO4t9NKFnjP-6vOLnaFAAAhl8AAKaSjhINlo5cuQDLRI2BA"},
-            4: {"source": "BAACAgIAAxkBAAMlaRj67-vSO4t9NKFnjP-6vOLnaFAAAhl8AAKaSjhINlo5cuQDLRI2BA"},
         },
     },
+    
 }
 
 # ===============================
