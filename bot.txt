@@ -1,6 +1,4 @@
 import os
-from dotenv import load_dotenv
-load_dotenv()
 
 from telegram import (
     Update,
@@ -22,10 +20,13 @@ from telegram.ext import (
 # 1. НАЛАШТУВАННЯ
 # ===============================
 
-BOT_TOKEN = os.environ.get("8421608017:AAGd5ikJ7bAU2OIpkCU8NI4Okbzi2Ed9upQ")
+# 1) пробуємо взяти токен з ENV
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
+# 2) якщо ENV немає (як на Railway зараз) – використовуємо запасний
 if not BOT_TOKEN:
-    raise RuntimeError("❌ BOT_TOKEN ENV variable is not set!")
+    BOT_TOKEN = "8421608017:AAGd5ikJ7bAU2OIpkCU8NI4Okbzi2Ed9upQ"
+
 
 # Локальна картинка-банер для старту
 WELCOME_PHOTO = "images/welcome.jpg"
@@ -69,6 +70,15 @@ ANIME = {
         "title": "Ненаситний берсерк",
         "episodes": {
             1: {"source": "FILE_ID_BERSERK_1"},
+        },
+    },
+    "neumelyi23": {
+        "title": "Неумелы444й семпай",
+        "episodes": {
+            1: {"source": "BAACAgIAAxkBAAMVaRj24OIri4siBrWlRsZDIX0u_VgAAv57AAKaSjhI2zDVA1kRZnI2BA"},
+            2: {"source": "BAACAgIAAxkBAAMfaRj4h-gAAYH9gLc9O6FG1xHfewqqAAIJfAACmko4SKEM3U0QuAvWNgQ"},
+            3: {"source": "BAACAgIAAxkBAAMlaRj67-vSO4t9NKFnjP-6vOLnaFAAAhl8AAKaSjhINlo5cuQDLRI2BA"},
+            4: {"source": "BAACAgIAAxkBAAMlaRj67-vSO4t9NKFnjP-6vOLnaFAAAhl8AAKaSjhINlo5cuQDLRI2BA"},
         },
     },
 }
@@ -218,7 +228,7 @@ async def show_episode_list(
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()  # прибираємо "думалки"
+    await query.answer()  
 
     data = query.data
 
