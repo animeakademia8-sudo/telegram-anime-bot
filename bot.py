@@ -140,28 +140,33 @@ async def set_last_message(chat_id: int, message):
 async def show_main_menu(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     """
     Показати стартовий екран.
-    Завжди видаляємо попереднє повідомлення бота (якщо є) і шлемо нове.
+    Спочатку пробуємо редагувати останнє повідомлення бота.
+    Якщо не вийшло (нема / очищено чат) – шлемо нове.
     """
     caption = "Приятного просмотра ✨\nВыбери аниме:"
     msg_id = LAST_MESSAGE.get(chat_id)
 
-    # 1. Видалити попереднє повідомлення бота
-    if msg_id:
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
-        except Exception:
-            pass
-
-    # 2. Відправити нове фото з меню
     with open(WELCOME_PHOTO, "rb") as photo:
+        if msg_id:
+            try:
+                await context.bot.edit_message_media(
+                    chat_id=chat_id,
+                    message_id=msg_id,
+                    media=InputMediaPhoto(media=photo, caption=caption),
+                    reply_markup=build_anime_menu(),
+                )
+                return
+            except Exception:
+                # якщо редагування не вдалось – падаємо в send_photo нижче
+                pass
+
         sent = await context.bot.send_photo(
             chat_id=chat_id,
             photo=photo,
             caption=caption,
             reply_markup=build_anime_menu(),
         )
-
-    await set_last_message(chat_id, sent)
+        await set_last_message(chat_id, sent)
 
 
 async def show_episode(
@@ -172,7 +177,8 @@ async def show_episode(
 ):
     """
     Показати конкретну серію.
-    Також спочатку видаляємо попереднє повідомлення бота, потім шлемо нове відео.
+    Спочатку пробуємо замінити медіа в останньому повідомленні,
+    якщо не вийшло – шлемо нове відео.
     """
     anime = ANIME.get(slug)
     if not anime:
@@ -188,21 +194,25 @@ async def show_episode(
     caption = f"{anime['title']}\nСерия {ep}"
     msg_id = LAST_MESSAGE.get(chat_id)
 
-    # 1. Видалити попереднє повідомлення бота
     if msg_id:
         try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
+            await context.bot.edit_message_media(
+                chat_id=chat_id,
+                message_id=msg_id,
+                media=InputMediaVideo(media=source, caption=caption),
+                reply_markup=build_episode_keyboard(slug, ep),
+            )
+            return
         except Exception:
+            # якщо редагування не вдалось – шлемо нове повідомлення
             pass
 
-    # 2. Відправити нове відео
     sent = await context.bot.send_video(
         chat_id=chat_id,
         video=source,
         caption=caption,
         reply_markup=build_episode_keyboard(slug, ep),
     )
-
     await set_last_message(chat_id, sent)
 
 
