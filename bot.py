@@ -1,6 +1,4 @@
 import os
-from dotenv import load_dotenv
-load_dotenv()
 
 from telegram import (
     Update,
@@ -22,10 +20,15 @@ from telegram.ext import (
 # 1. НАЛАШТУВАННЯ
 # ===============================
 
-BOT_TOKEN = os.environ.get("8421608017:AAGd5ikJ7bAU2OIpkCU8NI4Okbzi2Ed9upQ")
+BOT_TOKEN = os.environ.get("8421608017:AAGd5ikJ7bAU2OIpkCU8NI4Okbzi2Ed9upQ", "").strip()
 
 if not BOT_TOKEN:
-    raise RuntimeError("❌ BOT_TOKEN ENV variable is not set!")
+    # Дуже корисний дебаг: в логах побачимо, які змінні взагалі є
+    raise RuntimeError(
+        "❌ BOT_TOKEN ENV variable is not set! "
+        f"Current ENV keys: {', '.join(sorted(os.environ.keys()))}"
+    )
+
 
 # Локальна картинка-банер для старту
 WELCOME_PHOTO = "images/welcome.jpg"
@@ -292,7 +295,6 @@ def main():
     print("BOT STARTED...")
     app.run_polling()
 
-import asyncio
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
