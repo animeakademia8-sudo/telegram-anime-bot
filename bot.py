@@ -45,8 +45,18 @@ ANIME = {
             1: {"source": "BAACAgIAAxkBAAMVaRj24OIri4siBrWlRsZDIX0u_VgAAv57AAKaSjhI2zDVA1kRZnI2BA"},
             2: {"source": "BAACAgIAAxkBAAMfaRj4h-gAAYH9gLc9O6FG1xHfewqqAAIJfAACmko4SKEM3U0QuAvWNgQ"},
             3: {"source": "BAACAgIAAxkBAAMlaRj67-vSO4t9NKFnjP-6vOLnaFAAAhl8AAKaSjhINlo5cuQDLRI2BA"},
+            4: {"source": "BAACAgIAAxkBAAMVaRj24OIri4siBrWlRsZDIX0u_VgAAv57AAKaSjhI2zDVA1kRZnI2BA"},
         },
     },
+
+    "iskazrnaistrana": {
+        "title": "искаженая страна чудес",
+        "episodes": {
+            1: {"source": "BAACAgIAAxkBAAM1aRm2hJxKYSrkag5vy0Ff4uUKwHoAAk57AAJsodBIfM-N9y7IUO82BA"},
+            
+        },
+    },
+
     "temnoe_proshloe": {
         "title": "Темное прошлое злодейки",
         "episodes": {
