@@ -66,7 +66,7 @@ ANIME = {
         },
     },
     "ga4iakyta": {
-        "title": "Гаиакута",
+        "title": "Гачиакута",
         "genres": ["приключения", "фэнтези", "экшен", "суперспособности", "антиутопия"],
         "episodes": {
             1: {"source": "BAACAgIAAxkBAAICSWkZ-Kgi797xty9gUQiwHzQ6IhbwAAIqiAAC0E_RSDiNDuk9slE9NgQ"},
