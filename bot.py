@@ -25,7 +25,7 @@ from telegram.ext import (
 BOT_TOKEN = os.environ.get("BOT_TOKEN") or "8421608017:AAGd5ikJ7bAU2OIpkCU8NI4Okbzi2Ed9upQ"
 WELCOME_PHOTO = "images/welcome.jpg"
 
-# Чат, из которого бот Берёт аниме
+# Чат, из которого бот берёт аниме
 SOURCE_CHAT_ID = -1003362969236  # твой чат с аниме
 
 # ===============================
@@ -41,6 +41,10 @@ USER_WATCHED: dict[int, set] = {}              # chat_id -> set((slug, ep))
 
 # Главное: теперь ANIME наполняется автоматически из SOURCE_CHAT_ID
 ANIME: dict[str, dict] = {}                    # slug -> {title, genres, episodes{ep: {source}}}
+
+# Индекс по file_id (для возможности реагировать на исправленные подписи и хранить сырые видео)
+# file_id -> {"slug": str | None, "ep": int | None}
+VIDEO_INDEX: dict[str, dict] = {}
 
 
 # ===============================
@@ -91,34 +95,48 @@ def parse_caption_to_meta(caption: str) -> Optional[dict]:
 
 def add_or_update_anime_from_message(msg: Message) -> None:
     """
-    Берём message из SOURCE_CHAT_ID с видео и подписью,
-    парсим подпись и обновляем ANIME.
+    Берём message из SOURCE_CHAT_ID с видео и подписью.
+    - Если подпись корректная — добавляем/обновляем аниме в ANIME.
+    - Если подпись некорректная — всё равно сохраняем file_id в VIDEO_INDEX
+      (на будущее, вдруг пригодится).
+    Важно: если потом придёт такая же серия уже с правильной подписью,
+    бот корректно обновит ANIME.
     """
     if not msg.video:
         return
+
+    file_id = msg.video.file_id
     meta = parse_caption_to_meta(msg.caption or "")
-    if not meta:
+
+    # Если подпись нормальная — обновляем структуру ANIME
+    if meta:
+        slug = meta["slug"]
+        title = meta["title"]
+        ep = meta["ep"]
+        genres = meta["genres"]
+
+        if slug not in ANIME:
+            ANIME[slug] = {
+                "title": title,
+                "genres": genres,
+                "episodes": {},
+            }
+        else:
+            # обновим title / genres (если есть новые)
+            ANIME[slug]["title"] = title
+            if genres:
+                ANIME[slug]["genres"] = genres
+
+        # Записываем/обновляем серию
+        ANIME[slug]["episodes"][ep] = {"source": file_id}
+
+        # Индекс по file_id -> знаем, какая это серия
+        VIDEO_INDEX[file_id] = {"slug": slug, "ep": ep}
         return
 
-    slug = meta["slug"]
-    title = meta["title"]
-    ep = meta["ep"]
-    genres = meta["genres"]
-    file_id = msg.video.file_id
-
-    if slug not in ANIME:
-        ANIME[slug] = {
-            "title": title,
-            "genres": genres,
-            "episodes": {},
-        }
-    else:
-        # обновим title / genres (если есть новые)
-        ANIME[slug]["title"] = title
-        if genres:
-            ANIME[slug]["genres"] = genres
-
-    ANIME[slug]["episodes"][ep] = {"source": file_id}
+    # Если подпись НЕ распарсилась — просто запоминаем file_id
+    if file_id not in VIDEO_INDEX:
+        VIDEO_INDEX[file_id] = {"slug": None, "ep": None}
 
 
 # ===============================
@@ -633,7 +651,9 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_source_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Сюда приходят сообщения из чата с аниме (SOURCE_CHAT_ID).
-    Если это видео с подписью нужного формата — добавляем/обновляем аниме.
+    Если это видео — пытаемся распарсить подпись и обновляем ANIME.
+    Даже если подпись сейчас кривая, file_id всё равно попадёт в VIDEO_INDEX
+    и при последующем корректном сообщении будет корректно привязан.
     """
     msg = update.message
     if not msg:
