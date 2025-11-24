@@ -33,9 +33,12 @@ LAST_MESSAGE: dict[int, int] = {}  # {chat_id: message_id}
 # простое состояние "режим поиска" для каждого чата
 SEARCH_MODE: dict[int, bool] = {}  # {chat_id: True/False}
 
+# прогресс просмотра: что и на какой серии смотрит пользователь
+USER_PROGRESS: dict[int, dict] = {}  # {chat_id: {"slug": str, "ep": int}}
+
 ANIME = {
     "neumeli": {
-        "title": "Неумелый сэмпай",
+        "title": "Неумелый семпай",
         "genres": ["романтика", "комедия", "школа", "повседневность"],
         "episodes": {
             1: {
@@ -80,7 +83,7 @@ ANIME = {
         },
     },
     "ga4iakyta": {
-        "title": "Гачиакута",
+        "title": "Га4иакута",
         "genres": ["приключения", "фэнтези", "экшен", "суперспособности", "антиутопия"],
         "episodes": {
             1: {
@@ -153,11 +156,14 @@ ANIME = {
 
 
 def build_main_menu_keyboard() -> InlineKeyboardMarkup:
-    # Главное меню: Каталог + Случайное
+    # Главное меню: Каталог + Случайное + Продолжить + Поиск
     keyboard = [
         [
             InlineKeyboardButton("📚 Каталог", callback_data="catalog"),
             InlineKeyboardButton("🎲 Случайное аниме", callback_data="random"),
+        ],
+        [
+            InlineKeyboardButton("⭐ Продолжить", callback_data="continue"),
         ],
         [InlineKeyboardButton("🔍 Поиск по названию", callback_data="search")],
     ]
@@ -174,7 +180,6 @@ def build_anime_menu() -> InlineKeyboardMarkup:
 
 
 def build_genre_keyboard() -> InlineKeyboardMarkup:
-    # собираем все жанры из ANIME
     genres_set = set()
     for anime in ANIME.values():
         for g in anime.get("genres", []):
@@ -186,7 +191,7 @@ def build_genre_keyboard() -> InlineKeyboardMarkup:
     row = []
     for g in genres:
         row.append(InlineKeyboardButton(g.capitalize(), callback_data=f"genre:{g}"))
-        if len(row) == 2:  # по 2 жанра в ряд
+        if len(row) == 2:
             rows.append(row)
             row = []
     if row:
@@ -279,6 +284,14 @@ def is_search_mode(chat_id: int) -> bool:
     return SEARCH_MODE.get(chat_id, False)
 
 
+async def save_progress(chat_id: int, slug: str, ep: int):
+    USER_PROGRESS[chat_id] = {"slug": slug, "ep": ep}
+
+
+def get_progress(chat_id: int):
+    return USER_PROGRESS.get(chat_id)
+
+
 async def show_main_menu(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     """
     Стартовый экран: картинка + кнопки
@@ -305,6 +318,7 @@ async def show_episode(
 ):
     """
     Показати конкретну серію.
+    Подпись: только название и номер серии.
     """
     anime = ANIME.get(slug)
     if not anime:
@@ -317,8 +331,7 @@ async def show_episode(
         return
 
     source = episode["source"]
-    genres = ", ".join(anime.get("genres", []))
-    caption = f"{anime['title']} [{genres}]\nСерия {ep}"
+    caption = f"{anime['title']}\nСерия {ep}"
 
     sent = await context.bot.send_video(
         chat_id=chat_id,
@@ -329,11 +342,11 @@ async def show_episode(
 
     await set_last_message(chat_id, sent.message_id)
     await set_search_mode(chat_id, False)
+    await save_progress(chat_id, slug, ep)
 
 
 async def show_random_anime(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     slug = random.choice(list(ANIME.keys()))
-    # всегда первая серия
     await show_episode(chat_id, context, slug, 1)
 
 
@@ -438,6 +451,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_random_anime(chat_id, context)
         return
 
+    # Продолжить просмотр
+    if data == "continue":
+        progress = get_progress(chat_id)
+        if not progress:
+            await query.answer("Ты ещё ничего не смотрел 😊", show_alert=True)
+            return
+        slug = progress["slug"]
+        ep = progress["ep"]
+        await show_episode(chat_id, context, slug, ep)
+        return
+
     # Включить режим поиска
     if data == "search":
         await set_search_mode(chat_id, True)
@@ -476,8 +500,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         source = episode["source"]
-        genres = ", ".join(anime.get("genres", []))
-        caption = f"{anime['title']} [{genres}]\nСерия {ep}"
+        caption = f"{anime['title']}\nСерия {ep}"
 
         media = InputMediaVideo(
             media=source,
@@ -491,6 +514,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await set_last_message(chat_id, query.message.message_id)
         await set_search_mode(chat_id, False)
+        await save_progress(chat_id, slug, ep)
         return
 
     # Выбор конкретной серии из списка
@@ -507,8 +531,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         source = episode["source"]
-        genres = ", ".join(anime.get("genres", []))
-        caption = f"{anime['title']} [{genres}]\nСерия {ep}"
+        caption = f"{anime['title']}\nСерия {ep}"
 
         media = InputMediaVideo(
             media=source,
@@ -522,6 +545,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await set_last_message(chat_id, query.message.message_id)
         await set_search_mode(chat_id, False)
+        await save_progress(chat_id, slug, ep)
         return
 
     # Список серий
@@ -558,8 +582,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         source = episode["source"]
-        genres = ", ".join(anime.get("genres", []))
-        caption = f"{anime['title']} [{genres}]\nСерия {next_ep}"
+        caption = f"{anime['title']}\nСерия {next_ep}"
 
         media = InputMediaVideo(
             media=source,
@@ -572,6 +595,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         await set_last_message(chat_id, query.message.message_id)
+        await save_progress(chat_id, slug, next_ep)
         return
 
     # Предыдущая серия
@@ -590,8 +614,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         source = episode["source"]
-        genres = ", ".join(anime.get("genres", []))
-        caption = f"{anime['title']} [{genres}]\nСерия {prev_ep}"
+        caption = f"{anime['title']}\nСерия {prev_ep}"
 
         media = InputMediaVideo(
             media=source,
@@ -604,6 +627,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         await set_last_message(chat_id, query.message.message_id)
+        await save_progress(chat_id, slug, prev_ep)
         return
 
 
@@ -619,7 +643,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     text = update.message.text.strip()
 
-    # если не режим поиска — игнорим или можно что-то отвечать
+    # если не режим поиска — игнорим
     if not is_search_mode(chat_id):
         return
 
@@ -630,7 +654,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # нашли аниме → показываем первую серию
+    # Удаляем предыдущее сообщение бота (чтобы не плодить ленту)
+    msg_id = LAST_MESSAGE.get(chat_id)
+    if msg_id:
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
+        except Exception:
+            pass
+
+    # показываем первую серию найденного аниме
     await show_episode(chat_id, context, slug, 1)
 
 
