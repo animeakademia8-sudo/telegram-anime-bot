@@ -1,4 +1,5 @@
 import os
+import json
 import random
 from typing import Optional
 
@@ -25,8 +26,11 @@ from telegram.ext import (
 BOT_TOKEN = os.environ.get("BOT_TOKEN") or "8421608017:AAGd5ikJ7bAU2OIpkCU8NI4Okbzi2Ed9upQ"
 WELCOME_PHOTO = "images/welcome.jpg"
 
-# Чат, из которого бот Берёт аниме
+# Чат, из которого бот берёт аниме
 SOURCE_CHAT_ID = -1003362969236  # твой чат с аниме
+
+ANIME_JSON_PATH = "anime.json"
+USERS_JSON_PATH = "users.json"
 
 # ===============================
 # IN-MEM STORAGE
@@ -35,12 +39,167 @@ LAST_MESSAGE: dict[int, int] = {}              # chat_id -> message_id
 LAST_MESSAGE_TYPE: dict[int, str] = {}         # chat_id -> "photo" or "video"
 SEARCH_MODE: dict[int, bool] = {}              # chat_id -> bool
 
-USER_PROGRESS: dict[int, dict] = {}            # chat_id -> {"slug": str, "ep": int}
-USER_FAVORITES: dict[int, set] = {}            # chat_id -> set(slug)
-USER_WATCHED: dict[int, set] = {}              # chat_id -> set((slug, ep))
+# user_id -> {"slug": str, "ep": int}
+USER_PROGRESS: dict[int, dict] = {}
 
-# Главное: ANIME наполняется автоматически из SOURCE_CHAT_ID
-ANIME: dict[str, dict] = {}                    # slug -> {title, genres, episodes{ep: {source}}}
+# user_id -> set(slug)
+USER_FAVORITES: dict[int, set] = {}
+
+# user_id -> set((slug, ep))
+USER_WATCHED: dict[int, set] = {}
+
+# slug -> {title, genres, episodes{ep: {source}}}
+ANIME: dict[str, dict] = {}
+
+
+# ===============================
+# JSON SAVE/LOAD: ANIME
+# ===============================
+def load_anime() -> None:
+    """Загружаем ANIME из anime.json, если файл существует."""
+    global ANIME
+    if not os.path.exists(ANIME_JSON_PATH):
+        ANIME = {}
+        return
+    try:
+        with open(ANIME_JSON_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        # ключи ep в JSON — строки, приведём к int
+        for slug, anime in data.items():
+            episodes = anime.get("episodes", {})
+            fixed_eps = {}
+            for ep_str, ep_data in episodes.items():
+                try:
+                    ep_int = int(ep_str)
+                except ValueError:
+                    continue
+                fixed_eps[ep_int] = ep_data
+            anime["episodes"] = fixed_eps
+        ANIME = data
+        print(f"Loaded ANIME from {ANIME_JSON_PATH}, items:", len(ANIME))
+    except Exception as e:
+        print("Failed to load anime.json:", e)
+        ANIME = {}
+
+
+def save_anime() -> None:
+    """Сохраняем ANIME в anime.json."""
+    try:
+        data_to_save = {}
+        for slug, anime in ANIME.items():
+            episodes = anime.get("episodes", {})
+            eps_json = {}
+            for ep_int, ep_data in episodes.items():
+                eps_json[str(ep_int)] = ep_data
+            data_to_save[slug] = {
+                "title": anime.get("title", ""),
+                "genres": anime.get("genres", []),
+                "episodes": eps_json,
+            }
+
+        with open(ANIME_JSON_PATH, "w", encoding="utf-8") as f:
+            json.dump(data_to_save, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print("Failed to save anime.json:", e)
+
+
+# ===============================
+# JSON SAVE/LOAD: USERS
+# ===============================
+def load_users() -> None:
+    """Загружаем USER_PROGRESS, USER_FAVORITES, USER_WATCHED из users.json."""
+    global USER_PROGRESS, USER_FAVORITES, USER_WATCHED
+    if not os.path.exists(USERS_JSON_PATH):
+        USER_PROGRESS = {}
+        USER_FAVORITES = {}
+        USER_WATCHED = {}
+        return
+
+    try:
+        with open(USERS_JSON_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        # progress: user_id -> {"slug": str, "ep": int}
+        USER_PROGRESS = {}
+        for user_id_str, prog in data.get("progress", {}).items():
+            try:
+                user_id = int(user_id_str)
+            except ValueError:
+                continue
+            slug = prog.get("slug")
+            ep = prog.get("ep")
+            if slug and isinstance(ep, int):
+                USER_PROGRESS[user_id] = {"slug": slug, "ep": ep}
+
+        # favorites: user_id -> [slug, ...]
+        USER_FAVORITES = {}
+        for user_id_str, fav_list in data.get("favorites", {}).items():
+            try:
+                user_id = int(user_id_str)
+            except ValueError:
+                continue
+            if isinstance(fav_list, list):
+                USER_FAVORITES[user_id] = set(fav_list)
+            else:
+                USER_FAVORITES[user_id] = set()
+
+        # watched: user_id -> [[slug, ep], ...]
+        USER_WATCHED = {}
+        for user_id_str, watched_list in data.get("watched", {}).items():
+            try:
+                user_id = int(user_id_str)
+            except ValueError:
+                continue
+            watched_set = set()
+            if isinstance(watched_list, list):
+                for item in watched_list:
+                    if isinstance(item, list) and len(item) == 2:
+                        slug, ep = item
+                        if isinstance(slug, str) and isinstance(ep, int):
+                            watched_set.add((slug, ep))
+            USER_WATCHED[user_id] = watched_set
+
+        print("Loaded users from users.json")
+
+    except Exception as e:
+        print("Failed to load users.json:", e)
+        USER_PROGRESS = {}
+        USER_FAVORITES = {}
+        USER_WATCHED = {}
+
+
+def save_users() -> None:
+    """Сохраняем USER_PROGRESS, USER_FAVORITES, USER_WATCHED в users.json."""
+    try:
+        data_to_save = {
+            "progress": {},
+            "favorites": {},
+            "watched": {},
+        }
+
+        # progress: user_id -> {"slug":..., "ep":...}
+        for user_id, prog in USER_PROGRESS.items():
+            data_to_save["progress"][str(user_id)] = {
+                "slug": prog.get("slug"),
+                "ep": prog.get("ep"),
+            }
+
+        # favorites: user_id -> [slug, ...]
+        for user_id, fav_set in USER_FAVORITES.items():
+            data_to_save["favorites"][str(user_id)] = list(fav_set)
+
+        # watched: user_id -> [[slug, ep], ...]
+        for user_id, watched_set in USER_WATCHED.items():
+            pairs = []
+            for slug, ep in watched_set:
+                pairs.append([slug, ep])
+            data_to_save["watched"][str(user_id)] = pairs
+
+        with open(USERS_JSON_PATH, "w", encoding="utf-8") as f:
+            json.dump(data_to_save, f, ensure_ascii=False, indent=2)
+
+    except Exception as e:
+        print("Failed to save users.json:", e)
 
 
 # ===============================
@@ -92,6 +251,7 @@ def parse_caption_to_meta(caption: str) -> Optional[dict]:
 def add_or_update_anime_from_message(msg: Message) -> Optional[str]:
     """
     Берём message с видео и подписью, парсим подпись и обновляем ANIME.
+    Сразу сохраняем ANIME в anime.json.
     Возвращаем строку с результатом (для /fix).
     """
     if not msg.video:
@@ -107,7 +267,6 @@ def add_or_update_anime_from_message(msg: Message) -> Optional[str]:
     genres = meta["genres"]
     file_id = msg.video.file_id
 
-    # Если такого slug ещё нет — создаём запись
     if slug not in ANIME:
         ANIME[slug] = {
             "title": title,
@@ -115,14 +274,14 @@ def add_or_update_anime_from_message(msg: Message) -> Optional[str]:
             "episodes": {},
         }
     else:
-        # обновим title / genres (если есть новые)
         ANIME[slug]["title"] = title
         if genres:
             ANIME[slug]["genres"] = genres
 
-    # КАЖДЫЙ РАЗ, когда приходит сообщение с валидной подписью,
-    # просто перезаписываем источник серии (file_id).
+    ANIME[slug].setdefault("episodes", {})
     ANIME[slug]["episodes"][ep] = {"source": file_id}
+
+    save_anime()
 
     return f"✅ Обновлено: {title} (slug: {slug}), серия {ep}"
 
@@ -436,6 +595,7 @@ async def show_episode(chat_id: int, context: ContextTypes.DEFAULT_TYPE, slug: s
     kb = build_episode_keyboard(slug, ep, chat_id)
     await send_or_edit_video(chat_id, context, episode["source"], caption, kb)
     USER_PROGRESS[chat_id] = {"slug": slug, "ep": ep}
+    save_users()
     SEARCH_MODE[chat_id] = False
 
 
@@ -562,6 +722,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("fav_add:"):
         slug = data.split(":", 1)[1]
         USER_FAVORITES.setdefault(chat_id, set()).add(slug)
+        save_users()
         prog = USER_PROGRESS.get(chat_id)
         ep = 1
         if prog and prog.get("slug") == slug:
@@ -572,6 +733,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("fav_remove:"):
         slug = data.split(":", 1)[1]
         USER_FAVORITES.setdefault(chat_id, set()).discard(slug)
+        save_users()
         prog = USER_PROGRESS.get(chat_id)
         ep = 1
         if prog and prog.get("slug") == slug:
@@ -583,6 +745,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _, slug, ep_str = data.split(":")
         ep = int(ep_str)
         USER_WATCHED.setdefault(chat_id, set()).add((slug, ep))
+        save_users()
         await show_episode(chat_id, context, slug, ep)
         return
 
@@ -590,6 +753,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _, slug, ep_str = data.split(":")
         ep = int(ep_str)
         USER_WATCHED.setdefault(chat_id, set()).discard((slug, ep))
+        save_users()
         await show_episode(chat_id, context, slug, ep)
         return
 
@@ -613,7 +777,6 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             found_slug = slug
             break
 
-    # удаляем сообщение пользователя
     try:
         await update.message.delete()
     except Exception:
@@ -658,7 +821,7 @@ async def cmd_fix(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Использование:
     1) Исправляешь подпись у сообщения с серией в SOURCE_CHAT_ID.
-    2) Пересылаешь ЭТО сообщение боту (или пишешь /fix в ответ на пересланное/оригинальное, если бот в чате).
+    2) Пересылаешь ЭТО сообщение боту (или пишешь /fix в ответ на нужное сообщение, если бот в чате).
     3) Бот берёт актуальную подпись и обновляет ANIME.
     """
     msg = update.message
@@ -678,7 +841,6 @@ async def cmd_fix(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text("❗ Отправь /fix в ответ на сообщение с видео (или пересылай сообщение с серией боту).")
         return
 
-    # Проверяем, что это сообщение из нужного SOURCE_CHAT_ID
     from_chat_id = None
     if target.forward_from_chat:
         from_chat_id = target.forward_from_chat.id
@@ -731,6 +893,10 @@ async def debug_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # BOOT
 # ===============================
 def main():
+    # Загружаем существующие данные при старте
+    load_anime()
+    load_users()
+
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     # /start
