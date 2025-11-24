@@ -1,6 +1,6 @@
 import os
 import random
-from typing import Optional, Dict, Any
+from typing import Optional
 
 from telegram import (
     Update,
@@ -8,8 +8,7 @@ from telegram import (
     InlineKeyboardButton,
     InputMediaPhoto,
     InputMediaVideo,
-    Video,
-    Animation,
+    Message,
 )
 from telegram.ext import (
     ApplicationBuilder,
@@ -26,132 +25,105 @@ from telegram.ext import (
 BOT_TOKEN = os.environ.get("BOT_TOKEN") or "8421608017:AAGd5ikJ7bAU2OIpkCU8NI4Okbzi2Ed9upQ"
 WELCOME_PHOTO = "images/welcome.jpg"
 
+# Чат, из которого бот Берёт аниме
+SOURCE_CHAT_ID = -1003362969236  # твой чат с аниме
+
 # ===============================
 # IN-MEM STORAGE
 # ===============================
+LAST_MESSAGE: dict[int, int] = {}              # chat_id -> message_id
+LAST_MESSAGE_TYPE: dict[int, str] = {}         # chat_id -> "photo" or "video"
+SEARCH_MODE: dict[int, bool] = {}              # chat_id -> bool
 
-# Каталог аниме = динамически наполняется из постов
-# структура:
-# ANIME = {
-#   slug: {
-#       "title": str,
-#       "genres": [str, ...],
-#       "episodes": {
-#           ep_number (int): {"source": file_id}
-#       }
-#   },
-#   ...
-# }
-ANIME: Dict[str, Dict[str, Any]] = {}
+USER_PROGRESS: dict[int, dict] = {}            # chat_id -> {"slug": str, "ep": int}
+USER_FAVORITES: dict[int, set] = {}            # chat_id -> set(slug)
+USER_WATCHED: dict[int, set] = {}              # chat_id -> set((slug, ep))
 
-# одно сообщение бота на чат
-LAST_MESSAGE: dict[int, int] = {}           # chat_id -> message_id
-LAST_MESSAGE_TYPE: dict[int, str] = {}      # chat_id -> "photo" или "video"
-
-# режим поиска (по названию) по чатам
-SEARCH_MODE: dict[int, bool] = {}           # chat_id -> bool
-
-# прогресс пользователя (последняя серия)
-USER_PROGRESS: dict[int, dict] = {}         # chat_id -> {"slug": str, "ep": int}
-
-# избранные тайтлы
-USER_FAVORITES: dict[int, set] = {}         # chat_id -> set(slug)
-
-# просмотренные тайтлы
-USER_WATCHED: dict[int, set] = {}           # chat_id -> set(slug)
+# Главное: теперь ANIME наполняется автоматически из SOURCE_CHAT_ID
+ANIME: dict[str, dict] = {}                    # slug -> {title, genres, episodes{ep: {source}}}
 
 
 # ===============================
-# PARSER: постов с канала
+# UTILS: парсер подписи
 # ===============================
-
-def parse_anime_caption(text: str) -> Optional[dict]:
+def parse_caption_to_meta(caption: str) -> Optional[dict]:
     """
-    Ждём формат (порядок строк – любой, регистр ключей – не важен):
-
-    slug: neumeli
-    title: Неумелый сэмпай
+    Ожидаем формат:
+    slug: ga4iakyta
+    title: Гачиакута
     ep: 1
-    genres: романтика, комедия, школа, повседневность
+    genres: приключения, фэнтези, экшен
+    Порядок строк может быть любым. genres — опционально.
     """
-    if not text:
+    if not caption:
         return None
 
-    lines = [l.strip() for l in text.split("\n") if l.strip()]
+    lines = [l.strip() for l in caption.splitlines() if l.strip()]
     data = {}
-
     for line in lines:
-        lower = line.lower()
-        if lower.startswith("slug:"):
-            data["slug"] = line.split(":", 1)[1].strip()
-        elif lower.startswith("title:"):
-            data["title"] = line.split(":", 1)[1].strip()
-        elif lower.startswith("ep:"):
-            ep_str = line.split(":", 1)[1].strip()
-            try:
-                data["ep"] = int(ep_str)
-            except ValueError:
-                return None
-        elif lower.startswith("genres:"):
-            genres_str = line.split(":", 1)[1].strip()
-            # разделение по запятой
-            genres = [g.strip().lower() for g in genres_str.split(",") if g.strip()]
-            data["genres"] = genres
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        key = key.strip().lower()
+        value = value.strip()
+        if key in ("slug", "title", "ep", "genres"):
+            data[key] = value
 
-    # обязательные поля
     if "slug" not in data or "title" not in data or "ep" not in data:
         return None
 
-    # genres опционально
-    if "genres" not in data:
-        data["genres"] = []
-
-    return data
-
-
-def add_or_update_anime_from_message(video_file_id: str, caption: str) -> Optional[dict]:
-    """
-    Парсим подпись сообщения, если формат корректный – добавляем/обновляем ANIME
-    и возвращаем словарь {slug, title, ep, genres}.
-    """
-    parsed = parse_anime_caption(caption)
-    if not parsed:
+    try:
+        ep_num = int(data["ep"])
+    except ValueError:
         return None
 
-    slug = parsed["slug"]
-    title = parsed["title"]
-    ep = parsed["ep"]
-    genres = parsed.get("genres", [])
-
-    anime = ANIME.setdefault(slug, {
-        "title": title,
-        "genres": genres,
-        "episodes": {}
-    })
-
-    # если вдруг поменяли title/genres – обновим
-    anime["title"] = title
-    # объединим старые и новые жанры
-    old_genres = set(anime.get("genres", []))
-    new_genres = set(genres)
-    merged = sorted(old_genres.union(new_genres))
-    anime["genres"] = merged
-
-    # добавляем / обновляем эпизод
-    anime["episodes"][ep] = {"source": video_file_id}
+    genres_list = []
+    if "genres" in data and data["genres"]:
+        genres_list = [g.strip().lower() for g in data["genres"].split(",") if g.strip()]
 
     return {
-        "slug": slug,
-        "title": title,
-        "ep": ep,
-        "genres": anime["genres"],
+        "slug": data["slug"],
+        "title": data["title"],
+        "ep": ep_num,
+        "genres": genres_list,
     }
+
+
+def add_or_update_anime_from_message(msg: Message) -> None:
+    """
+    Берём message из SOURCE_CHAT_ID с видео и подписью,
+    парсим подпись и обновляем ANIME.
+    """
+    if not msg.video:
+        return
+    meta = parse_caption_to_meta(msg.caption or "")
+    if not meta:
+        return
+
+    slug = meta["slug"]
+    title = meta["title"]
+    ep = meta["ep"]
+    genres = meta["genres"]
+    file_id = msg.video.file_id
+
+    if slug not in ANIME:
+        ANIME[slug] = {
+            "title": title,
+            "genres": genres,
+            "episodes": {},
+        }
+    else:
+        # обновим title / genres (если есть новые)
+        ANIME[slug]["title"] = title
+        if genres:
+            ANIME[slug]["genres"] = genres
+
+    ANIME[slug]["episodes"][ep] = {"source": file_id}
 
 
 # ===============================
 # UI BUILDERS
 # ===============================
-
 def build_main_menu_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     keyboard = [
         [
@@ -186,7 +158,6 @@ def build_genre_keyboard() -> InlineKeyboardMarkup:
             row = []
     if row:
         rows.append(row)
-
     rows.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
     return InlineKeyboardMarkup(rows)
 
@@ -214,19 +185,17 @@ def build_episode_keyboard(slug: str, ep: int, chat_id: int) -> InlineKeyboardMa
     if has_next:
         nav.append(InlineKeyboardButton("Следующая ▶️", callback_data=f"next:{slug}:{ep}"))
 
-    # избранное
     fav_set = USER_FAVORITES.get(chat_id, set())
     if slug in fav_set:
         fav_button = InlineKeyboardButton("💔 Убрать из избранного", callback_data=f"fav_remove:{slug}")
     else:
         fav_button = InlineKeyboardButton("💖 В избранное", callback_data=f"fav_add:{slug}")
 
-    # просмотренное
     watched_set = USER_WATCHED.get(chat_id, set())
-    if slug in watched_set:
-        watched_button = InlineKeyboardButton("👁 Убрать из просмотренного", callback_data=f"unwatch:{slug}")
+    if (slug, ep) in watched_set:
+        watched_button = InlineKeyboardButton("👁 Убрать из просмотренного", callback_data=f"unwatch:{slug}:{ep}")
     else:
-        watched_button = InlineKeyboardButton("👁 Добавить в просмотренное", callback_data=f"watch:{slug}")
+        watched_button = InlineKeyboardButton("👁 В просмотренное", callback_data=f"watch:{slug}:{ep}")
 
     rows = [
         [
@@ -253,18 +222,17 @@ def build_episode_list_keyboard(slug: str) -> InlineKeyboardMarkup:
             row = []
     if row:
         rows.append(row)
-
     rows.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
     rows.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
     return InlineKeyboardMarkup(rows)
 
 
-def build_anime_menu() -> InlineKeyboardMarkup:
+def build_anime_menu(chat_id: int) -> InlineKeyboardMarkup:
     keyboard = []
     for slug, anime in ANIME.items():
         keyboard.append([InlineKeyboardButton(anime["title"], callback_data=f"anime:{slug}")])
     if not keyboard:
-        keyboard.append([InlineKeyboardButton("Пока пусто", callback_data="menu")])
+        keyboard.append([InlineKeyboardButton("Пока нет аниме", callback_data="menu")])
     keyboard.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
     return InlineKeyboardMarkup(keyboard)
 
@@ -284,9 +252,9 @@ def build_favorites_keyboard(chat_id: int) -> InlineKeyboardMarkup:
 def build_watched_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     watched = USER_WATCHED.get(chat_id, set())
     rows = []
-    for slug in watched:
+    for slug, ep in sorted(watched):
         title = ANIME.get(slug, {}).get("title", slug)
-        rows.append([InlineKeyboardButton(title, callback_data=f"anime:{slug}")])
+        rows.append([InlineKeyboardButton(f"{title} — серия {ep}", callback_data=f"ep:{slug}:{ep}")])
     if not rows:
         rows = [[InlineKeyboardButton("Пусто", callback_data="menu")]]
     rows.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
@@ -296,7 +264,6 @@ def build_watched_keyboard(chat_id: int) -> InlineKeyboardMarkup:
 # ===============================
 # HELPERS: single-message logic
 # ===============================
-
 async def send_or_edit_photo(
     chat_id: int,
     context: ContextTypes.DEFAULT_TYPE,
@@ -393,7 +360,6 @@ async def edit_caption_only(
             caption,
             reply_markup or build_main_menu_keyboard(chat_id),
         )
-
     try:
         await context.bot.edit_message_caption(
             chat_id=chat_id,
@@ -407,46 +373,29 @@ async def edit_caption_only(
             await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
         except Exception:
             pass
-        return await send_or_edit_photo(
-            chat_id,
-            context,
-            WELCOME_PHOTO,
-            caption,
-            reply_markup or build_main_menu_keyboard(chat_id),
-        )
+        with open(WELCOME_PHOTO, "rb") as ph:
+            sent = await context.bot.send_photo(
+                chat_id=chat_id,
+                photo=ph,
+                caption=caption,
+                reply_markup=reply_markup,
+            )
+        LAST_MESSAGE[chat_id] = sent.message_id
+        LAST_MESSAGE_TYPE[chat_id] = "photo"
+        return sent.message_id
 
 
 # ===============================
 # SCREENS
 # ===============================
-
 async def show_main_menu(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
-    if not ANIME:
-        caption = (
-            "Приятного просмотра ✨\n\n"
-            "Пока каталог пуст.\n"
-            "Добавь серии в канал/группу, где я админ, в формате:\n\n"
-            "slug: kod_anime\n"
-            "title: Название аниме\n"
-            "ep: 1\n"
-            "genres: жанр1, жанр2\n"
-        )
-    else:
-        caption = "Приятного просмотра ✨\nВыбери опцию:"
+    caption = "Приятного просмотра ✨\nВыбери опцию:"
     kb = build_main_menu_keyboard(chat_id)
     await send_or_edit_photo(chat_id, context, WELCOME_PHOTO, caption, kb)
     SEARCH_MODE[chat_id] = False
 
 
 async def show_genres(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
-    if not ANIME:
-        await edit_caption_only(
-            chat_id,
-            context,
-            "Каталог пока пуст. Добавь аниме через канал.",
-            build_main_menu_keyboard(chat_id),
-        )
-        return
     caption = "Выбери жанр:"
     kb = build_genre_keyboard()
     await edit_caption_only(chat_id, context, caption, kb)
@@ -454,16 +403,8 @@ async def show_genres(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def show_anime_list(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
-    if not ANIME:
-        await edit_caption_only(
-            chat_id,
-            context,
-            "Каталог пока пуст. Добавь аниме через канал.",
-            build_main_menu_keyboard(chat_id),
-        )
-        return
     caption = "Список аниме:"
-    kb = build_anime_menu()
+    kb = build_anime_menu(chat_id)
     await edit_caption_only(chat_id, context, caption, kb)
     SEARCH_MODE[chat_id] = False
 
@@ -475,36 +416,19 @@ async def show_anime_by_genre(chat_id: int, context: ContextTypes.DEFAULT_TYPE, 
     SEARCH_MODE[chat_id] = False
 
 
-async def show_episode(
-    chat_id: int,
-    context: ContextTypes.DEFAULT_TYPE,
-    slug: str,
-    ep: int,
-):
+async def show_episode(chat_id: int, context: ContextTypes.DEFAULT_TYPE, slug: str, ep: int):
     anime = ANIME.get(slug)
     if not anime:
-        await edit_caption_only(
-            chat_id,
-            context,
-            "Аниме не найдено.",
-            build_main_menu_keyboard(chat_id),
-        )
+        await edit_caption_only(chat_id, context, "Аниме не найдено", build_main_menu_keyboard(chat_id))
         return
-
     episode = anime["episodes"].get(ep)
     if not episode:
-        await edit_caption_only(
-            chat_id,
-            context,
-            "Такой серии нет.",
-            build_main_menu_keyboard(chat_id),
-        )
+        await edit_caption_only(chat_id, context, "Такой серии нет", build_main_menu_keyboard(chat_id))
         return
 
     caption = f"{anime['title']}\nСерия {ep}"
     kb = build_episode_keyboard(slug, ep, chat_id)
     await send_or_edit_video(chat_id, context, episode["source"], caption, kb)
-
     USER_PROGRESS[chat_id] = {"slug": slug, "ep": ep}
     SEARCH_MODE[chat_id] = False
 
@@ -512,12 +436,7 @@ async def show_episode(
 async def show_episode_list(chat_id: int, context: ContextTypes.DEFAULT_TYPE, slug: str):
     anime = ANIME.get(slug)
     if not anime:
-        await edit_caption_only(
-            chat_id,
-            context,
-            "Аниме не найдено.",
-            build_main_menu_keyboard(chat_id),
-        )
+        await edit_caption_only(chat_id, context, "Аниме не найдено", build_main_menu_keyboard(chat_id))
         return
     caption = f"{anime['title']}\nВыбери серию:"
     kb = build_episode_list_keyboard(slug)
@@ -527,18 +446,10 @@ async def show_episode_list(chat_id: int, context: ContextTypes.DEFAULT_TYPE, sl
 
 async def show_random(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     if not ANIME:
-        await edit_caption_only(
-            chat_id,
-            context,
-            "Каталог пока пуст, нечего выбирать случайно.",
-            build_main_menu_keyboard(chat_id),
-        )
+        await edit_caption_only(chat_id, context, "Пока нет доступных аниме 😔", build_main_menu_keyboard(chat_id))
         return
     slug = random.choice(list(ANIME.keys()))
-    # берем первую доступную серию
-    eps = sorted(ANIME[slug]["episodes"].keys())
-    first_ep = eps[0]
-    await show_episode(chat_id, context, slug, first_ep)
+    await show_episode(chat_id, context, slug, 1)
 
 
 async def show_favorites(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
@@ -558,7 +469,6 @@ async def show_watched(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
 # ===============================
 # CALLBACKS
 # ===============================
-
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -589,12 +499,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "search":
         SEARCH_MODE[chat_id] = True
         caption = "🔍 Введи название аниме сообщением (или его часть)."
-        await edit_caption_only(
-            chat_id,
-            context,
-            caption,
-            build_main_menu_keyboard(chat_id),
-        )
+        await edit_caption_only(chat_id, context, caption, build_main_menu_keyboard(chat_id))
         return
 
     if data == "favorites":
@@ -605,11 +510,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_watched(chat_id, context)
         return
 
-    if data == "back":
-        # просто вернём главное меню (минимум логики, но стабильно)
-        await show_main_menu(chat_id, context)
-        return
-
     if data.startswith("genre:"):
         genre = data.split(":", 1)[1]
         await show_anime_by_genre(chat_id, context, genre)
@@ -617,15 +517,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data.startswith("anime:"):
         slug = data.split(":", 1)[1]
-        # если есть прогресс по этому тайтлу – продолжаем оттуда
+        await show_episode(chat_id, context, slug, 1)
+        return
+
+    if data == "back":
         prog = USER_PROGRESS.get(chat_id)
-        ep = 1
-        if prog and prog.get("slug") == slug:
-            ep = prog.get("ep", 1)
+        if prog:
+            slug = prog["slug"]
+            ep = prog["ep"]
+            await show_episode(chat_id, context, slug, ep)
         else:
-            eps = sorted(ANIME[slug]["episodes"].keys())
-            ep = eps[0]
-        await show_episode(chat_id, context, slug, ep)
+            await show_main_menu(chat_id, context)
         return
 
     if data.startswith("list:"):
@@ -672,22 +574,16 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data.startswith("watch:"):
-        slug = data.split(":", 1)[1]
-        USER_WATCHED.setdefault(chat_id, set()).add(slug)
-        prog = USER_PROGRESS.get(chat_id)
-        ep = 1
-        if prog and prog.get("slug") == slug:
-            ep = prog.get("ep", 1)
+        _, slug, ep_str = data.split(":")
+        ep = int(ep_str)
+        USER_WATCHED.setdefault(chat_id, set()).add((slug, ep))
         await show_episode(chat_id, context, slug, ep)
         return
 
     if data.startswith("unwatch:"):
-        slug = data.split(":", 1)[1]
-        USER_WATCHED.setdefault(chat_id, set()).discard(slug)
-        prog = USER_PROGRESS.get(chat_id)
-        ep = 1
-        if prog and prog.get("slug") == slug:
-            ep = prog.get("ep", 1)
+        _, slug, ep_str = data.split(":")
+        ep = int(ep_str)
+        USER_WATCHED.setdefault(chat_id, set()).discard((slug, ep))
         await show_episode(chat_id, context, slug, ep)
         return
 
@@ -695,14 +591,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===============================
 # TEXT (SEARCH)
 # ===============================
-
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
         return
     chat_id = update.effective_chat.id
     text = (update.message.text or "").strip()
 
-    # это именно текст от пользователя в ЛС
     if not SEARCH_MODE.get(chat_id, False):
         return
 
@@ -713,7 +607,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             found_slug = slug
             break
 
-    # удаляем сообщение пользователя, чтобы не было "ленты"
+    # удаляем сообщение пользователя
     try:
         await update.message.delete()
     except Exception:
@@ -729,17 +623,32 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         SEARCH_MODE[chat_id] = False
         return
 
-    # показываем первую серию найденного тайтла
-    eps = sorted(ANIME[found_slug]["episodes"].keys())
-    first_ep = eps[0]
-    await show_episode(chat_id, context, found_slug, first_ep)
+    await show_episode(chat_id, context, found_slug, 1)
     SEARCH_MODE[chat_id] = False
+
+
+# ===============================
+# SOURCE CHAT HANDLER
+# ===============================
+async def handle_source_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Сюда приходят сообщения из чата с аниме (SOURCE_CHAT_ID).
+    Если это видео с подписью нужного формата — добавляем/обновляем аниме.
+    """
+    msg = update.message
+    if not msg:
+        return
+    if msg.chat_id != SOURCE_CHAT_ID:
+        return
+    if not msg.video:
+        return
+
+    add_or_update_anime_from_message(msg)
 
 
 # ===============================
 # /start
 # ===============================
-
 async def send_start_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
 
@@ -755,90 +664,52 @@ async def send_start_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await show_main_menu(chat_id, context)
 
     try:
-        await update.message.delete()
+        if update.message:
+            await update.message.delete()
     except Exception:
         pass
 
 
 # ===============================
-# CHANNEL/GROUP HANDLER: ловим новые серии
+# DEBUG: get file_id
 # ===============================
-
-async def handle_new_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Ловим видео/анимацию из каналов/групп, где бот есть.
-    Парсим подпись и обновляем ANIME.
-    """
-    msg = update.effective_message
-    if not msg:
-        return
-
-    # берём video либо animation (gif/webm)
-    video: Optional[Video] = msg.video
-    anim: Optional[Animation] = msg.animation
-
-    file_id = None
-    if video:
-        file_id = video.file_id
-    elif anim:
-        file_id = anim.file_id
-
-    if not file_id:
-        return
-
-    caption = msg.caption or ""
-    parsed = add_or_update_anime_from_message(file_id, caption)
-    if not parsed:
-        # формат не подошёл — просто игнор
-        return
-
-    # для дебага можно написать в лог-чате или консоль
-    print(f"Updated ANIME from channel: {parsed['slug']} ep {parsed['ep']}")
-
-
-# ===============================
-# DEBUG: get file_id (в ЛС)
-# ===============================
-
 async def debug_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message:
+    if not update.message or not update.message.video:
         return
-    vid = update.message.video or update.message.animation
-    if not vid:
-        return
-    file_id = vid.file_id
-    await update.message.reply_text(f"VIDEO/ANIMATION FILE_ID:\n{file_id}")
+    file_id = update.message.video.file_id
+    await update.message.reply_text(f"VIDEO FILE_ID:\n{file_id}")
 
 
 # ===============================
 # BOOT
 # ===============================
-
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # ЛС + команды
+    # /start
     app.add_handler(CommandHandler("start", send_start_message))
+
+    # callbacks (кнопки)
     app.add_handler(CallbackQueryHandler(handle_callback))
 
-    # поиск по тексту
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-
-    # приём медиа из каналов/групп (серии)
+    # текст от пользователей (поиск)
     app.add_handler(
         MessageHandler(
-            (filters.VIDEO | filters.ANIMATION) & ~filters.ChatType.PRIVATE,
-            handle_new_media,
+            filters.TEXT & ~filters.COMMAND & ~filters.Chat(SOURCE_CHAT_ID),
+            handle_user_text,
         )
     )
 
-    # debug в ЛС
+    # сообщения из SOURCE_CHAT_ID (автодобавление аниме)
     app.add_handler(
         MessageHandler(
-            (filters.VIDEO | filters.ANIMATION) & filters.ChatType.PRIVATE,
-            debug_video,
+            filters.Chat(SOURCE_CHAT_ID) & filters.VIDEO,
+            handle_source_chat_message,
         )
     )
+
+    # debug — если тебе нужно где-то достать file_id вручную
+    app.add_handler(MessageHandler(filters.VIDEO & ~filters.Chat(SOURCE_CHAT_ID), debug_video))
 
     print("BOT STARTED...")
     app.run_polling()
