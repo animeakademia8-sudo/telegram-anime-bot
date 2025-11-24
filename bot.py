@@ -114,7 +114,6 @@ def load_user_data():
         USER_FAVORITES = {int(k): set(v) for k, v in data.get("favorites", {}).items()}
         USER_HISTORY = {int(k): {slug: int(ep) for slug, ep in v.items()} for k, v in data.get("history", {}).items()}
     except Exception:
-        # Если файл битый — просто игнорируем
         pass
 
 
@@ -148,14 +147,9 @@ def update_history(chat_id: int, slug: str, ep: int):
 
 
 def get_recent_titles(chat_id: int) -> list[str]:
-    """
-    Берём историю и сортируем по "последней серии" как простую эвристику:
-    чем больше серия – тем позже смотрели. В реальности можно хранить timestamp.
-    """
     hist = USER_HISTORY.get(chat_id, {})
     if not hist:
         return []
-    # сортируем по номеру последней серии, по убыванию
     sorted_slugs = sorted(hist.keys(), key=lambda s: hist[s], reverse=True)
     return sorted_slugs[:MAX_RECENT_TITLES]
 
@@ -236,6 +230,7 @@ def build_episode_keyboard(slug: str, ep: int, chat_id: int) -> InlineKeyboardMa
     rows = [
         [
             InlineKeyboardButton("📺 Серии", callback_data=f"list:{slug}"),
+            # кнопка "К списку" теперь ведёт на список эпизодов
             InlineKeyboardButton("⬅️ К списку", callback_data=f"back_to_anime:{slug}"),
         ],
         [fav_button],
@@ -254,7 +249,6 @@ def build_episode_list_keyboard(slug: str, chat_id: int) -> InlineKeyboardMarkup
     rows = []
     row = []
     for e in eps:
-        # пометки прогресса
         if last_ep == 0:
             label = f"Серия {e}"
         elif e < last_ep:
@@ -525,11 +519,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_episode(chat_id, context, slug, ep)
         return
 
+    # ---- FIXED: back_to_anime теперь открывает список эпизодов ----
     if data.startswith("back_to_anime:"):
         slug = data.split(":", 1)[1]
-        last_ep = get_last_watched_ep(chat_id, slug)
-        ep = last_ep if last_ep > 0 else 1
-        await show_episode(chat_id, context, slug, ep)
+        await show_episode_list(chat_id, context, slug)
         return
 
     if data.startswith("list:"):
@@ -586,7 +579,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         update_history(chat_id, slug, ep)
         USER_PROGRESS[chat_id] = {"slug": slug, "ep": ep}
         save_user_data()
-        # просто перерисуем кнопки с обновлённым прогрессом
         await show_episode(chat_id, context, slug, ep, mark_progress=False)
         return
 
@@ -600,7 +592,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     text = (update.message.text or "").strip()
 
-    # если не режим поиска — даём подсказку и не ломаем интерфейс
     if not SEARCH_MODE.get(chat_id, False):
         try:
             await update.message.reply_text(
@@ -617,7 +608,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if q in anime["title"].lower():
             found_slugs.append(slug)
 
-    # удаляем сообщение пользователя, чтобы не было ленты
     try:
         await update.message.delete()
     except Exception:
@@ -639,13 +629,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         SEARCH_MODE[chat_id] = False
         return
 
-    # если один результат — сразу открываем
     if len(found_slugs) == 1:
         await show_episode(chat_id, context, found_slugs[0], 1)
         SEARCH_MODE[chat_id] = False
         return
 
-    # если несколько — показываем список тайтлов
     keyboard = []
     for slug in found_slugs:
         anime = ANIME[slug]
