@@ -66,7 +66,7 @@ ANIME = {
         },
     },
     "ga4iakyta": {
-        "title": "Гачиакута",
+        "title": "Гаиакута",
         "genres": ["приключения", "фэнтези", "экшен", "суперспособности", "антиутопия"],
         "episodes": {
             1: {"source": "BAACAgIAAxkBAAICSWkZ-Kgi797xty9gUQiwHzQ6IhbwAAIqiAAC0E_RSDiNDuk9slE9NgQ"},
@@ -97,7 +97,6 @@ ANIME = {
 # UI BUILDERS
 # ===============================
 def build_main_menu_keyboard(chat_id: int) -> InlineKeyboardMarkup:
-    # main: Catalog, Random, Continue, Search, Favorites
     keyboard = [
         [
             InlineKeyboardButton("📚 Каталог", callback_data="catalog"),
@@ -162,7 +161,10 @@ def build_episode_keyboard(slug: str, ep: int, chat_id: int) -> InlineKeyboardMa
         fav_button = InlineKeyboardButton("💖 Добавить в избранное", callback_data=f"fav_add:{slug}")
 
     rows = [
-        [InlineKeyboardButton("📺 Серии", callback_data=f"list:{slug}"), InlineKeyboardButton("⬅️ К списку", callback_data=f"back_to_anime:{slug}")],
+        [
+            InlineKeyboardButton("📺 Серии", callback_data=f"list:{slug}"),
+            InlineKeyboardButton("⬅️ К списку", callback_data=f"back_to_anime:{slug}"),
+        ],
         [fav_button],
     ]
     if nav:
@@ -188,7 +190,6 @@ def build_episode_list_keyboard(slug: str) -> InlineKeyboardMarkup:
 
 
 def build_anime_menu(chat_id: int) -> InlineKeyboardMarkup:
-    # full anime list
     keyboard = []
     for slug, anime in ANIME.items():
         keyboard.append([InlineKeyboardButton(anime["title"], callback_data=f"anime:{slug}")])
@@ -209,11 +210,10 @@ def build_favorites_keyboard(chat_id: int) -> InlineKeyboardMarkup:
 
 
 # ===============================
-# HELPERS: edit/send single message only
+# HELPERS: single-message logic
 # ===============================
 async def send_or_edit_photo(chat_id: int, context: ContextTypes.DEFAULT_TYPE, photo_path: str, caption: str, reply_markup: InlineKeyboardMarkup):
     msg_id = LAST_MESSAGE.get(chat_id)
-    # prefer editing the existing message
     if msg_id:
         try:
             await context.bot.edit_message_media(
@@ -225,7 +225,6 @@ async def send_or_edit_photo(chat_id: int, context: ContextTypes.DEFAULT_TYPE, p
             LAST_MESSAGE_TYPE[chat_id] = "photo"
             return msg_id
         except Exception:
-            # fallback: delete old and send new
             try:
                 await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
             except Exception:
@@ -252,7 +251,6 @@ async def send_or_edit_video(chat_id: int, context: ContextTypes.DEFAULT_TYPE, f
             except Exception:
                 pass
 
-    # send new video if edit failed or no msg exists
     sent = await context.bot.send_video(chat_id=chat_id, video=file_id_or_path, caption=caption, reply_markup=reply_markup)
     LAST_MESSAGE[chat_id] = sent.message_id
     LAST_MESSAGE_TYPE[chat_id] = "video"
@@ -262,13 +260,11 @@ async def send_or_edit_video(chat_id: int, context: ContextTypes.DEFAULT_TYPE, f
 async def edit_caption_only(chat_id: int, context: ContextTypes.DEFAULT_TYPE, caption: str, reply_markup: Optional[InlineKeyboardMarkup] = None):
     msg_id = LAST_MESSAGE.get(chat_id)
     if not msg_id:
-        # nothing to edit -> send main photo as fallback
         return await send_or_edit_photo(chat_id, context, WELCOME_PHOTO, caption, reply_markup or build_main_menu_keyboard(chat_id))
     try:
         await context.bot.edit_message_caption(chat_id=chat_id, message_id=msg_id, caption=caption, reply_markup=reply_markup)
         return msg_id
     except Exception:
-        # fallback: delete and send photo
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
         except Exception:
@@ -280,7 +276,7 @@ async def edit_caption_only(chat_id: int, context: ContextTypes.DEFAULT_TYPE, ca
 
 
 # ===============================
-# BUSINESS: show screens (all VIA edit of single message)
+# SCREENS
 # ===============================
 async def show_main_menu(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     caption = "Приятного просмотра ✨\nВыбери опцию:"
@@ -304,7 +300,6 @@ async def show_anime_list(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def show_anime_by_genre(chat_id: int, context: ContextTypes.DEFAULT_TYPE, genre: str):
-    anime = [a for a in ANIME.values() if genre in a.get("genres", [])]
     caption = f"Жанр: {genre.capitalize()}\nВыбери аниме:"
     kb = build_anime_by_genre_keyboard(genre)
     await edit_caption_only(chat_id, context, caption, kb)
@@ -321,12 +316,9 @@ async def show_episode(chat_id: int, context: ContextTypes.DEFAULT_TYPE, slug: s
         await edit_caption_only(chat_id, context, "Такой серии нет", build_main_menu_keyboard(chat_id))
         return
 
-    # caption: only title and episode number (no genres)
     caption = f"{anime['title']}\nСерия {ep}"
     kb = build_episode_keyboard(slug, ep, chat_id)
-    # replace media with video (we use file_id stored in episodes)
     await send_or_edit_video(chat_id, context, episode["source"], caption, kb)
-    # save progress
     USER_PROGRESS[chat_id] = {"slug": slug, "ep": ep}
     SEARCH_MODE[chat_id] = False
 
@@ -355,7 +347,7 @@ async def show_favorites(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ===============================
-# CALLBACK HANDLER (all navigation)
+# CALLBACKS
 # ===============================
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -363,13 +355,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     chat_id = query.message.chat_id
 
-    # MAIN MENU / MENU
     if data == "menu":
         await show_main_menu(chat_id, context)
         return
 
     if data == "catalog":
-        # show genres first
         await show_genres(chat_id, context)
         return
 
@@ -380,7 +370,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "continue":
         prog = USER_PROGRESS.get(chat_id)
         if not prog:
-            # show menu with alert
             await query.answer("Ты ещё ничего не смотрел", show_alert=True)
             await show_main_menu(chat_id, context)
             return
@@ -388,7 +377,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "search":
-        # set search mode and instruct user (edit current message)
         SEARCH_MODE[chat_id] = True
         caption = "🔍 Введи название аниме сообщением (или его часть)."
         await edit_caption_only(chat_id, context, caption, build_main_menu_keyboard(chat_id))
@@ -398,22 +386,18 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_favorites(chat_id, context)
         return
 
-    # genre selected
     if data.startswith("genre:"):
         genre = data.split(":", 1)[1]
         await show_anime_by_genre(chat_id, context, genre)
         return
 
-    # anime selected -> show first episode (replace media with video)
     if data.startswith("anime:"):
         slug = data.split(":", 1)[1]
         await show_episode(chat_id, context, slug, 1)
         return
 
-    # back_to_anime (from lists) -> show first episode (or keep last progress for that anime)
     if data.startswith("back_to_anime:"):
         slug = data.split(":", 1)[1]
-        # if user had progress in this anime - open that ep, else open first
         prog = USER_PROGRESS.get(chat_id)
         ep = 1
         if prog and prog.get("slug") == slug:
@@ -421,20 +405,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_episode(chat_id, context, slug, ep)
         return
 
-    # list of episodes
     if data.startswith("list:"):
         slug = data.split(":", 1)[1]
         await show_episode_list(chat_id, context, slug)
         return
 
-    # specific episode
     if data.startswith("ep:"):
         _, slug, ep_str = data.split(":")
         ep = int(ep_str)
         await show_episode(chat_id, context, slug, ep)
         return
 
-    # next / prev
     if data.startswith("next:"):
         _, slug, ep_str = data.split(":")
         current = int(ep_str)
@@ -447,17 +428,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_episode(chat_id, context, slug, current - 1)
         return
 
-    # favorites add/remove
     if data.startswith("fav_add:"):
         slug = data.split(":", 1)[1]
         USER_FAVORITES.setdefault(chat_id, set()).add(slug)
-        # update keyboard (toggle)
-        # stay on current screen: open episode if progress exists, else open anime
         prog = USER_PROGRESS.get(chat_id)
         if prog and prog.get("slug") == slug:
             await show_episode(chat_id, context, slug, prog.get("ep", 1))
         else:
-            # open anime first episode
             await show_episode(chat_id, context, slug, 1)
         return
 
@@ -471,19 +448,19 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await show_episode(chat_id, context, slug, 1)
         return
 
+
 # ===============================
-# TEXT HANDLER (search)
+# TEXT (SEARCH)
 # ===============================
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
         return
     chat_id = update.effective_chat.id
-    text = update.message.text.strip()
-    # if not in search mode → ignore to avoid creating posts
+    text = (update.message.text or "").strip()
+
     if not SEARCH_MODE.get(chat_id, False):
         return
 
-    # find by substring in title (case-insensitive)
     q = text.lower()
     found_slug = None
     for slug, anime in ANIME.items():
@@ -491,39 +468,33 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             found_slug = slug
             break
 
-    # delete user's search message to keep chat clean
+    # удаляем сообщение пользователя, чтобы не было "ленты"
     try:
         await update.message.delete()
     except Exception:
         pass
 
     if not found_slug:
-        # inform user via editing the single message (no new messages)
-        await edit_caption_only(chat_id, context, "😔 Ничего не нашёл по этому названию.\nПопробуй другое слово.", build_main_menu_keyboard(chat_id))
+        await edit_caption_only(
+            chat_id,
+            context,
+            "😔 Ничего не нашёл по этому названию.\nПопробуй другое слово.",
+            build_main_menu_keyboard(chat_id),
+        )
         SEARCH_MODE[chat_id] = False
         return
 
-    # before showing result: delete old bot message (we will replace via edit/send logic)
-    last_id = LAST_MESSAGE.get(chat_id)
-    if last_id:
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=last_id)
-        except Exception:
-            pass
-        LAST_MESSAGE.pop(chat_id, None)
-        LAST_MESSAGE_TYPE.pop(chat_id, None)
-
-    # show first episode of found anime (edited into single message)
+    # НИЧЕГО не удаляем у бота, просто редактируем на найденную серию
     await show_episode(chat_id, context, found_slug, 1)
     SEARCH_MODE[chat_id] = False
 
 
 # ===============================
-# START handler
+# /start
 # ===============================
 async def send_start_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    # delete previous bot message if exists — we will send/edit main menu
+
     last_id = LAST_MESSAGE.get(chat_id)
     if last_id:
         try:
@@ -533,9 +504,8 @@ async def send_start_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         LAST_MESSAGE.pop(chat_id, None)
         LAST_MESSAGE_TYPE.pop(chat_id, None)
 
-    # send main menu as photo (this will be the single message)
     await show_main_menu(chat_id, context)
-    # delete the user's /start to keep chat clean
+
     try:
         await update.message.delete()
     except Exception:
@@ -543,7 +513,7 @@ async def send_start_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 # ===============================
-# DEBUG helper (get file_id)
+# DEBUG: get file_id
 # ===============================
 async def debug_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.video:
