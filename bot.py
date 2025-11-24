@@ -25,7 +25,7 @@ from telegram.ext import (
 BOT_TOKEN = os.environ.get("BOT_TOKEN") or "8421608017:AAGd5ikJ7bAU2OIpkCU8NI4Okbzi2Ed9upQ"
 WELCOME_PHOTO = "images/welcome.jpg"
 
-# Чат, из которого бот берёт аниме
+# Чат, из которого бот Берёт аниме
 SOURCE_CHAT_ID = -1003362969236  # твой чат с аниме
 
 # ===============================
@@ -39,12 +39,8 @@ USER_PROGRESS: dict[int, dict] = {}            # chat_id -> {"slug": str, "ep": 
 USER_FAVORITES: dict[int, set] = {}            # chat_id -> set(slug)
 USER_WATCHED: dict[int, set] = {}              # chat_id -> set((slug, ep))
 
-# Главное: теперь ANIME наполняется автоматически из SOURCE_CHAT_ID
+# Главное: ANIME наполняется автоматически из SOURCE_CHAT_ID
 ANIME: dict[str, dict] = {}                    # slug -> {title, genres, episodes{ep: {source}}}
-
-# Индекс по file_id (для возможности реагировать на исправленные подписи и хранить сырые видео)
-# file_id -> {"slug": str | None, "ep": int | None}
-VIDEO_INDEX: dict[str, dict] = {}
 
 
 # ===============================
@@ -93,50 +89,42 @@ def parse_caption_to_meta(caption: str) -> Optional[dict]:
     }
 
 
-def add_or_update_anime_from_message(msg: Message) -> None:
+def add_or_update_anime_from_message(msg: Message) -> Optional[str]:
     """
-    Берём message из SOURCE_CHAT_ID с видео и подписью.
-    - Если подпись корректная — добавляем/обновляем аниме в ANIME.
-    - Если подпись некорректная — всё равно сохраняем file_id в VIDEO_INDEX
-      (на будущее, вдруг пригодится).
-    Важно: если потом придёт такая же серия уже с правильной подписью,
-    бот корректно обновит ANIME.
+    Берём message с видео и подписью, парсим подпись и обновляем ANIME.
+    Возвращаем строку с результатом (для /fix).
     """
     if not msg.video:
-        return
+        return "❌ В сообщении нет видео."
 
-    file_id = msg.video.file_id
     meta = parse_caption_to_meta(msg.caption or "")
+    if not meta:
+        return "❌ Подпись не в нужном формате. Нужны строки:\nslug: ...\ntitle: ...\nep: ...\n[genres: ...]"
 
-    # Если подпись нормальная — обновляем структуру ANIME
-    if meta:
-        slug = meta["slug"]
-        title = meta["title"]
-        ep = meta["ep"]
-        genres = meta["genres"]
+    slug = meta["slug"]
+    title = meta["title"]
+    ep = meta["ep"]
+    genres = meta["genres"]
+    file_id = msg.video.file_id
 
-        if slug not in ANIME:
-            ANIME[slug] = {
-                "title": title,
-                "genres": genres,
-                "episodes": {},
-            }
-        else:
-            # обновим title / genres (если есть новые)
-            ANIME[slug]["title"] = title
-            if genres:
-                ANIME[slug]["genres"] = genres
+    # Если такого slug ещё нет — создаём запись
+    if slug not in ANIME:
+        ANIME[slug] = {
+            "title": title,
+            "genres": genres,
+            "episodes": {},
+        }
+    else:
+        # обновим title / genres (если есть новые)
+        ANIME[slug]["title"] = title
+        if genres:
+            ANIME[slug]["genres"] = genres
 
-        # Записываем/обновляем серию
-        ANIME[slug]["episodes"][ep] = {"source": file_id}
+    # КАЖДЫЙ РАЗ, когда приходит сообщение с валидной подписью,
+    # просто перезаписываем источник серии (file_id).
+    ANIME[slug]["episodes"][ep] = {"source": file_id}
 
-        # Индекс по file_id -> знаем, какая это серия
-        VIDEO_INDEX[file_id] = {"slug": slug, "ep": ep}
-        return
-
-    # Если подпись НЕ распарсилась — просто запоминаем file_id
-    if file_id not in VIDEO_INDEX:
-        VIDEO_INDEX[file_id] = {"slug": None, "ep": None}
+    return f"✅ Обновлено: {title} (slug: {slug}), серия {ep}"
 
 
 # ===============================
@@ -650,10 +638,7 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===============================
 async def handle_source_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Сюда приходят сообщения из чата с аниме (SOURCE_CHAT_ID).
-    Если это видео — пытаемся распарсить подпись и обновляем ANIME.
-    Даже если подпись сейчас кривая, file_id всё равно попадёт в VIDEO_INDEX
-    и при последующем корректном сообщении будет корректно привязан.
+    Автодобавление новых серий: сюда приходят сообщения из чата с аниме (SOURCE_CHAT_ID).
     """
     msg = update.message
     if not msg:
@@ -664,6 +649,48 @@ async def handle_source_chat_message(update: Update, context: ContextTypes.DEFAU
         return
 
     add_or_update_anime_from_message(msg)
+
+
+# ===============================
+# /fix — обновить серию по исправленной подписи
+# ===============================
+async def cmd_fix(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Использование:
+    1) Исправляешь подпись у сообщения с серией в SOURCE_CHAT_ID.
+    2) Пересылаешь ЭТО сообщение боту (или пишешь /fix в ответ на пересланное/оригинальное, если бот в чате).
+    3) Бот берёт актуальную подпись и обновляет ANIME.
+    """
+    msg = update.message
+    if not msg:
+        return
+
+    target: Optional[Message] = None
+
+    # Если команда в ответ на сообщение
+    if msg.reply_to_message:
+        target = msg.reply_to_message
+    # Если переслано из канала/чата
+    elif msg.forward_from_chat or msg.forward_from_message_id:
+        target = msg
+
+    if not target:
+        await msg.reply_text("❗ Отправь /fix в ответ на сообщение с видео (или пересылай сообщение с серией боту).")
+        return
+
+    # Проверяем, что это сообщение из нужного SOURCE_CHAT_ID
+    from_chat_id = None
+    if target.forward_from_chat:
+        from_chat_id = target.forward_from_chat.id
+    elif target.chat:
+        from_chat_id = target.chat.id
+
+    if from_chat_id != SOURCE_CHAT_ID:
+        await msg.reply_text("❌ Это сообщение не из SOURCE_CHAT_ID. Перешли боту серию из нужного чата.")
+        return
+
+    result = add_or_update_anime_from_message(target)
+    await msg.reply_text(result or "✅ Обновлено.")
 
 
 # ===============================
@@ -708,6 +735,9 @@ def main():
 
     # /start
     app.add_handler(CommandHandler("start", send_start_message))
+
+    # /fix
+    app.add_handler(CommandHandler("fix", cmd_fix))
 
     # callbacks (кнопки)
     app.add_handler(CallbackQueryHandler(handle_callback))
