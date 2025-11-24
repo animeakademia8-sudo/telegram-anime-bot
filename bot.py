@@ -41,11 +41,11 @@ ANIME = {
                 "source": "BAACAgIAAxkBAAMfaRj4h-gAAYH9gLc9O6FG1xHfewqqAAIJfAACmko4SKEM3U0QuAvWNgQ"
             },
             3: {
-                "source": "BAACAgIAAxkBAAMlaRj67-vSO4t9NKFnjP-6vOLnaFAAAhl8AAKaSjhINlo5cuQDLRI2BA"},
+                "source": "BAACAgIAAxkBAAMlaRj67-vSO4t9NKFnjP-6vOLnaFAAAhl8AAKaSjhINlo5cuQDLRI2BA"
             },
         },
     },
-     "pridvorni mag": {
+    "pridvorni_mag": {
         "title": "Придворный маг с навыком поддержки",
         "genres": ["приключения", "фэнтези", "экшен"],
         "episodes": {
@@ -71,13 +71,12 @@ ANIME = {
                 "source": "BAACAgIAAxkBAAIC8GkkO4_XK3w-fG52q2Oy0ze8_6f5AALNigACC2whSUqvmz2y8VwdNgQ"
             },
             8: {
-                "source": "BAACAgIAAxkBAAIC8mkkO5jQLbJVRXj0SPWO9CHLiwUeAALOigACC2whSfxA3xX4o_weNgQ"},
-
+                "source": "BAACAgIAAxkBAAIC8mkkO5jQLbJVRXj0SPWO9CHLiwUeAALOigACC2whSfxA3xX4o_weNgQ"
             },
         },
     },
     "ga4iakyta": {
-        "title": "Га4иакута",
+        "title": "Гачиакута",
         "genres": ["приключения", "фэнтези", "экшен", "суперспособности", "антиутопия"],
         "episodes": {
             1: {
@@ -328,7 +327,7 @@ async def send_start_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         payload = parts[1].strip()
 
     if payload:
-        # Очікуємо формат slug_ep, напр. neumelyi_1
+        # Очікуємо формат slug_ep, напр. neumeli_1
         try:
             slug, ep_str = payload.split("_", 1)
             ep = int(ep_str)
