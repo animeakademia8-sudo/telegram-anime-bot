@@ -37,6 +37,7 @@ USER_FAVORITES: dict[int, set] = {}         # chat_id -> set(slug)
 # стек экранов: chat_id -> list[dict(...)]
 USER_STACK: dict[int, list] = {}
 
+
 # ===============================
 # DATA: ANIME
 # ===============================
@@ -100,7 +101,6 @@ ANIME = {
 # ===============================
 # STACK HELPERS
 # ===============================
-
 def push_screen(chat_id: int, screen: dict):
     USER_STACK.setdefault(chat_id, []).append(screen)
 
@@ -119,7 +119,6 @@ def clear_stack(chat_id: int):
 # ===============================
 # UI BUILDERS
 # ===============================
-
 def build_main_menu_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     keyboard = [
         [
@@ -185,14 +184,12 @@ def build_episode_keyboard(slug: str, ep: int, chat_id: int) -> InlineKeyboardMa
         fav_button = InlineKeyboardButton("💖 Добавить в избранное", callback_data=f"fav_add:{slug}")
 
     rows = [
-        [
-            InlineKeyboardButton("📺 Серии", callback_data=f"list:{slug}"),
-            InlineKeyboardButton("⬅️ К списку", callback_data="back"),
-        ],
+        [InlineKeyboardButton("📺 Серии", callback_data=f"list:{slug}")],
         [fav_button],
     ]
     if nav:
         rows.append(nav)
+    rows.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
     rows.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
     return InlineKeyboardMarkup(rows)
 
@@ -236,7 +233,6 @@ def build_favorites_keyboard(chat_id: int) -> InlineKeyboardMarkup:
 # ===============================
 # HELPERS: single-message logic
 # ===============================
-
 async def send_or_edit_photo(chat_id: int, context: ContextTypes.DEFAULT_TYPE, photo_path: str, caption: str, reply_markup: InlineKeyboardMarkup):
     msg_id = LAST_MESSAGE.get(chat_id)
     if msg_id:
@@ -303,7 +299,6 @@ async def edit_caption_only(chat_id: int, context: ContextTypes.DEFAULT_TYPE, ca
 # ===============================
 # SCREENS
 # ===============================
-
 async def show_main_menu(chat_id: int, context: ContextTypes.DEFAULT_TYPE, push_prev: bool = True):
     if push_prev:
         push_screen(chat_id, {"screen": "main_menu"})
@@ -411,6 +406,9 @@ async def go_back(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
         await show_episode(chat_id, context, state.get("slug", ""), state.get("ep", 1), push_prev=False, mark_progress=False)
     elif screen == "favorites":
         await show_favorites(chat_id, context, push_prev=False)
+    elif screen == "search_prompt":
+        caption = "🔍 Введи название аниме сообщением (или его часть)."
+        await edit_caption_only(chat_id, context, caption, build_main_menu_keyboard(chat_id))
     else:
         await show_main_menu(chat_id, context, push_prev=False)
 
@@ -418,7 +416,6 @@ async def go_back(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
 # ===============================
 # CALLBACKS
 # ===============================
-
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -503,6 +500,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ep = prog.get("ep", 1)
         else:
             ep = 1
+        # не пушим в стек повторно
         await show_episode(chat_id, context, slug, ep, push_prev=False)
         return
 
@@ -521,7 +519,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===============================
 # TEXT (SEARCH)
 # ===============================
-
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
         return
@@ -554,7 +551,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         SEARCH_MODE[chat_id] = False
         return
 
-    # переход к серии, стек уже содержит состояние search_prompt
     await show_episode(chat_id, context, found_slug, 1)
     SEARCH_MODE[chat_id] = False
 
@@ -562,7 +558,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===============================
 # /start
 # ===============================
-
 async def send_start_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
 
@@ -587,7 +582,6 @@ async def send_start_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # ===============================
 # DEBUG: get file_id
 # ===============================
-
 async def debug_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.video:
         return
@@ -598,7 +592,6 @@ async def debug_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===============================
 # BOOT
 # ===============================
-
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
