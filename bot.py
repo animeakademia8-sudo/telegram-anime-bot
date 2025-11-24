@@ -45,6 +45,21 @@ ANIME = {
             },
         },
     },
+     "pridvorni mag": {
+        "title": "Придворный маг с навыком поддержки",
+        "genres": ["приключения", "фэнтези", "экшен"],
+        "episodes": {
+            1: {
+                "source": "BAACAgIAAxkBAAIC3GkkOM-7t-w06khdsdltYWevP4uGAALAigACC2whSaYsDQuBaW6oNgQ"
+            },
+            2: {
+                "source": "BAACAgIAAxkBAAIC5mkkO1KvLt1dgCdWBIbCy0pzRCXyAALBigACC2whSUTWBHO3NgTZNgQ"
+            },
+            3: {
+                "source": "BAACAgIAAxkBAAIC6GkkO1xpW64VhQi9QH7CFVYpwT5JAALDigACC2whSeRl-8aKAnmpNgQ"
+            },
+        },
+    },
     "ga4iakyta": {
         "title": "Га4иакута",
         "genres": ["приключения", "фэнтези", "экшен", "суперспособности", "антиутопия"],
