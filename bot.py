@@ -30,7 +30,7 @@ WELCOME_PHOTO = "images/welcome.jpg"
 LAST_MESSAGE: dict[int, int] = {}  # {chat_id: message_id}
 
 ANIME = {
-    "neumelyi": {
+    "neumeli": {
         "title": "Неумелый семпай",
         "episodes": {
             1: {"source": "BAACAgIAAxkBAAMVaRj24OIri4siBrWlRsZDIX0u_VgAAv57AAKaSjhI2zDVA1kRZnI2BA"},
@@ -39,7 +39,7 @@ ANIME = {
         },
     },
     "ga4iakyta": {
-        "title": "Гачиакута",
+        "title": "Га4иакута",
         "episodes": {
             1: {"source": "BAACAgIAAxkBAAICSWkZ-Kgi797xty9gUQiwHzQ6IhbwAAIqiAAC0E_RSDiNDuk9slE9NgQ"},
             2: {"source": "BAACAgIAAxkBAAICS2kZ-gp2odRw6qYgozEwuNRBQ46TAAIviAAC0E_RSPxJtnNeXZtINgQ"},
@@ -60,6 +60,7 @@ ANIME = {
             17: {"source": "BAACAgIAAxkBAAICaWkZ_nkLwaofkObeDnC1CtRg8oDEAALBiAAC0E_RSJ7nifrQs1O2NgQ"},
             18: {"source": "BAACAgIAAxkBAAICa2kZ_u9372Z0SVNL2twsXli-Raj9AALEiAAC0E_RSJQB19aj5RlWNgQ"},
             19: {"source": "BAACAgIAAxkBAAICrWkazh87OUkjfSYK1UeHti1CeuYpAAIFkAAC0E_ZSII3zt7YJHrYNgQ"},
+            20: {"source": "BAACAgIAAxkBAAICvWkkJXvdgQABfqZCK4ORx7nCVjODUwAClIkAAgtsIUmO-cMUGJ8nRzYE"},
 
 
         },
