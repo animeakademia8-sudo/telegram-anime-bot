@@ -49,6 +49,11 @@ ANIME = {
             1: {"source": "BAACAgIAAxkBAAMVaRj24OIri4siBrWlRsZDIX0u_VgAAv57AAKaSjhI2zDVA1kRZnI2BA"},
             2: {"source": "BAACAgIAAxkBAAMfaRj4h-gAAYH9gLc9O6FG1xHfewqqAAIJfAACmko4SKEM3U0QuAvWNgQ"},
             3: {"source": "BAACAgIAAxkBAAMlaRj67-vSO4t9NKFnjP-6vOLnaFAAAhl8AAKaSjhINlo5cuQDLRI2BA"},
+            4: {"source": "BAACAgIAAxkBAAIDMmkkT1cOajJ0bhZH_JkcdsmLIhoYAAImfAACmko4SBiUcwmxTisJNgQ"},
+            5: {"source": "BAACAgIAAxkBAAIDNGkkT19_lQuYPe5ZlJT4WBfTixbKAAI2fAACmko4SHS9zmMgKBTlNgQ"},
+            6: {"source": "BAACAgIAAxkBAAIDNmkkT2e8e2gDOB5QzCY2YpqxVsICAALDiQACvhFxSOWK_q1jWB_oNgQ"},
+            7: {"source": "BAACAgIAAxkBAAIDOGkkT3sX7FezBJOOD21FK44fRlYpAAI4jAACOEG4SHs_SAcgSxfLNgQ"},
+            8: {"source": "BAACAgIAAxkBAAIDOmkkT4Wtw_DjOR9XXr0KghSvDBOPAAJakAACPgwBSZFA_Js7a4KVNgQ"},
         },
     },
     "pridvorni_mag": {
