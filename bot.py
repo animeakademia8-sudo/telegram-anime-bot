@@ -1,4 +1,5 @@
 import os
+import random
 
 from telegram import (
     Update,
@@ -28,6 +29,9 @@ WELCOME_PHOTO = "images/welcome.jpg"
 
 # тут зберігаємо id останнього повідомлення бота в кожному чаті
 LAST_MESSAGE: dict[int, int] = {}  # {chat_id: message_id}
+
+# простое состояние "режим поиска" для каждого чата
+SEARCH_MODE: dict[int, bool] = {}  # {chat_id: True/False}
 
 ANIME = {
     "neumeli": {
@@ -149,8 +153,14 @@ ANIME = {
 
 
 def build_main_menu_keyboard() -> InlineKeyboardMarkup:
-    # Главное меню: одна кнопка "Каталог"
-    keyboard = [[InlineKeyboardButton("📚 Каталог", callback_data="catalog")]]
+    # Главное меню: Каталог + Случайное
+    keyboard = [
+        [
+            InlineKeyboardButton("📚 Каталог", callback_data="catalog"),
+            InlineKeyboardButton("🎲 Случайное аниме", callback_data="random"),
+        ],
+        [InlineKeyboardButton("🔍 Поиск по названию", callback_data="search")],
+    ]
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -208,7 +218,18 @@ def build_anime_by_genre_keyboard(genre: str) -> InlineKeyboardMarkup:
 
 def build_episode_keyboard(slug: str, ep: int) -> InlineKeyboardMarkup:
     episodes = ANIME[slug]["episodes"]
+    has_prev = (ep - 1) in episodes
     has_next = (ep + 1) in episodes
+
+    nav_row = []
+    if has_prev:
+        nav_row.append(
+            InlineKeyboardButton("◀️ Предыдущая", callback_data=f"prev:{slug}:{ep}")
+        )
+    if has_next:
+        nav_row.append(
+            InlineKeyboardButton("Следующая ▶️", callback_data=f"next:{slug}:{ep}")
+        )
 
     rows = [
         [
@@ -217,10 +238,8 @@ def build_episode_keyboard(slug: str, ep: int) -> InlineKeyboardMarkup:
         ]
     ]
 
-    if has_next:
-        rows.append(
-            [InlineKeyboardButton("Следующая ▶️", callback_data=f"next:{slug}:{ep}")]
-        )
+    if nav_row:
+        rows.append(nav_row)
 
     rows.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
     return InlineKeyboardMarkup(rows)
@@ -252,9 +271,17 @@ async def set_last_message(chat_id: int, message_id: int):
     LAST_MESSAGE[chat_id] = message_id
 
 
+async def set_search_mode(chat_id: int, value: bool):
+    SEARCH_MODE[chat_id] = value
+
+
+def is_search_mode(chat_id: int) -> bool:
+    return SEARCH_MODE.get(chat_id, False)
+
+
 async def show_main_menu(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     """
-    Стартовый экран: картинка + кнопка "Каталог"
+    Стартовый экран: картинка + кнопки
     """
     caption = "Приятного просмотра ✨"
 
@@ -267,6 +294,7 @@ async def show_main_menu(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
         )
 
     await set_last_message(chat_id, sent.message_id)
+    await set_search_mode(chat_id, False)
 
 
 async def show_episode(
@@ -277,7 +305,6 @@ async def show_episode(
 ):
     """
     Показати конкретну серію.
-    Тут ТІЛЬКИ відправляємо відео. Видалення старого робить send_start_message.
     """
     anime = ANIME.get(slug)
     if not anime:
@@ -301,6 +328,25 @@ async def show_episode(
     )
 
     await set_last_message(chat_id, sent.message_id)
+    await set_search_mode(chat_id, False)
+
+
+async def show_random_anime(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
+    slug = random.choice(list(ANIME.keys()))
+    # всегда первая серия
+    await show_episode(chat_id, context, slug, 1)
+
+
+def search_anime_by_title(query: str):
+    """
+    Простой поиск по названию (поиск подстроки, регистронезависимый).
+    Возвращает slug или None.
+    """
+    q = query.lower()
+    for slug, anime in ANIME.items():
+        if q in anime["title"].lower():
+            return slug
+    return None
 
 
 # ===============================
@@ -327,21 +373,17 @@ async def send_start_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         payload = parts[1].strip()
 
     if payload:
-        # Очікуємо формат slug_ep, напр. neumeli_1
         try:
             slug, ep_str = payload.split("_", 1)
             ep = int(ep_str)
         except ValueError:
-            # Якщо щось не так – просто меню
             await show_main_menu(chat_id, context)
         else:
-            # Відкриваємо конкретну серію
             await show_episode(chat_id, context, slug, ep)
     else:
-        # Звичайний /start → меню
         await show_main_menu(chat_id, context)
 
-    # 2. ПІСЛЯ того як уже є нове бот-повідомлення, видаляємо /start користувача
+    # 2. Видаляємо /start користувача
     try:
         await update.message.delete()
     except Exception:
@@ -375,6 +417,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
         await set_last_message(chat_id, query.message.message_id)
+        await set_search_mode(chat_id, False)
         return
 
     # Каталог → показать жанры
@@ -386,6 +429,22 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=build_genre_keyboard(),
         )
 
+        await set_last_message(chat_id, query.message.message_id)
+        await set_search_mode(chat_id, False)
+        return
+
+    # Случайное аниме
+    if data == "random":
+        await show_random_anime(chat_id, context)
+        return
+
+    # Включить режим поиска
+    if data == "search":
+        await set_search_mode(chat_id, True)
+        await query.message.edit_caption(
+            caption="🔍 Введи название аниме сообщением (или его часть)",
+            reply_markup=build_main_menu_keyboard(),
+        )
         await set_last_message(chat_id, query.message.message_id)
         return
 
@@ -400,6 +459,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         await set_last_message(chat_id, query.message.message_id)
+        await set_search_mode(chat_id, False)
         return
 
     # Выбор аниме → первая серия
@@ -430,6 +490,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         await set_last_message(chat_id, query.message.message_id)
+        await set_search_mode(chat_id, False)
         return
 
     # Выбор конкретной серии из списка
@@ -460,6 +521,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         await set_last_message(chat_id, query.message.message_id)
+        await set_search_mode(chat_id, False)
         return
 
     # Список серий
@@ -477,12 +539,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         await set_last_message(chat_id, query.message.message_id)
+        await set_search_mode(chat_id, False)
         return
 
     # Следующая серия
     if data.startswith("next:"):
         _, slug, ep_str = data.split(":")
-        next_ep = int(ep_str) + 1
+        current_ep = int(ep_str)
+        next_ep = current_ep + 1
 
         anime = ANIME.get(slug)
         if not anime:
@@ -510,9 +574,68 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await set_last_message(chat_id, query.message.message_id)
         return
 
+    # Предыдущая серия
+    if data.startswith("prev:"):
+        _, slug, ep_str = data.split(":")
+        current_ep = int(ep_str)
+        prev_ep = current_ep - 1
+
+        anime = ANIME.get(slug)
+        if not anime:
+            return
+
+        episode = anime["episodes"].get(prev_ep)
+        if not episode:
+            await query.answer("Предыдущих серий нет 😅", show_alert=False)
+            return
+
+        source = episode["source"]
+        genres = ", ".join(anime.get("genres", []))
+        caption = f"{anime['title']} [{genres}]\nСерия {prev_ep}"
+
+        media = InputMediaVideo(
+            media=source,
+            caption=caption,
+        )
+
+        await query.message.edit_media(
+            media=media,
+            reply_markup=build_episode_keyboard(slug, prev_ep),
+        )
+
+        await set_last_message(chat_id, query.message.message_id)
+        return
+
 
 # ===============================
-# 6. DEBUG: отримаємо file_id
+# 6. ОБРАБОТКА ТЕКСТА (поиск)
+# ===============================
+
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message:
+        return
+
+    chat_id = update.effective_chat.id
+    text = update.message.text.strip()
+
+    # если не режим поиска — игнорим или можно что-то отвечать
+    if not is_search_mode(chat_id):
+        return
+
+    slug = search_anime_by_title(text)
+    if not slug:
+        await update.message.reply_text(
+            "😔 Ничего не нашёл по этому названию.\nПопробуй написать по-другому или короче."
+        )
+        return
+
+    # нашли аниме → показываем первую серию
+    await show_episode(chat_id, context, slug, 1)
+
+
+# ===============================
+# 7. DEBUG: отримаємо file_id
 # ===============================
 
 
@@ -526,7 +649,7 @@ async def debug_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ===============================
-# 7. ЗАПУСК БОТА
+# 8. ЗАПУСК БОТА
 # ===============================
 
 
@@ -535,6 +658,9 @@ def main():
 
     app.add_handler(CommandHandler("start", send_start_message))
     app.add_handler(CallbackQueryHandler(handle_callback))
+    # текст для поиска
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    # debug видео
     app.add_handler(MessageHandler(filters.VIDEO, debug_video))
 
     print("BOT STARTED...")
