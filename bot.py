@@ -32,6 +32,7 @@ LAST_MESSAGE: dict[int, int] = {}  # {chat_id: message_id}
 ANIME = {
     "neumeli": {
         "title": "Неумелый семпай",
+        "genres": ["романтика", "комедия", "школа", "повседневность"],
         "episodes": {
             1: {"source": "BAACAgIAAxkBAAMVaRj24OIri4siBrWlRsZDIX0u_VgAAv57AAKaSjhI2zDVA1kRZnI2BA"},
             2: {"source": "BAACAgIAAxkBAAMfaRj4h-gAAYH9gLc9O6FG1xHfewqqAAIJfAACmko4SKEM3U0QuAvWNgQ"},
@@ -40,6 +41,7 @@ ANIME = {
     },
     "ga4iakyta": {
         "title": "Га4иакута",
+        "genres": ["приключения", "фэнтези", "экшен", "суперспособности", "антиутопия"],
         "episodes": {
             1: {"source": "BAACAgIAAxkBAAICSWkZ-Kgi797xty9gUQiwHzQ6IhbwAAIqiAAC0E_RSDiNDuk9slE9NgQ"},
             2: {"source": "BAACAgIAAxkBAAICS2kZ-gp2odRw6qYgozEwuNRBQ46TAAIviAAC0E_RSPxJtnNeXZtINgQ"},
@@ -61,16 +63,21 @@ ANIME = {
             18: {"source": "BAACAgIAAxkBAAICa2kZ_u9372Z0SVNL2twsXli-Raj9AALEiAAC0E_RSJQB19aj5RlWNgQ"},
             19: {"source": "BAACAgIAAxkBAAICrWkazh87OUkjfSYK1UeHti1CeuYpAAIFkAAC0E_ZSII3zt7YJHrYNgQ"},
             20: {"source": "BAACAgIAAxkBAAICvWkkJXvdgQABfqZCK4ORx7nCVjODUwAClIkAAgtsIUmO-cMUGJ8nRzYE"},
-
-
         },
     },
-    
 }
 
 # ===============================
 # 2. КЛАВІАТУРИ
 # ===============================
+
+
+def build_main_menu_keyboard() -> InlineKeyboardMarkup:
+    # Главное меню: одна кнопка "Каталог"
+    keyboard = [
+        [InlineKeyboardButton("📚 Каталог", callback_data="catalog")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
 
 
 def build_anime_menu() -> InlineKeyboardMarkup:
@@ -82,14 +89,57 @@ def build_anime_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
+def build_genre_keyboard() -> InlineKeyboardMarkup:
+    # собираем все жанры из ANIME
+    genres_set = set()
+    for anime in ANIME.values():
+        for g in anime.get("genres", []):
+            genres_set.add(g)
+
+    genres = sorted(genres_set)
+
+    rows = []
+    row = []
+    for g in genres:
+        row.append(InlineKeyboardButton(g.capitalize(), callback_data=f"genre:{g}"))
+        if len(row) == 2:  # по 2 жанра в ряд
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+
+    rows.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
+    return InlineKeyboardMarkup(rows)
+
+
+def build_anime_by_genre_keyboard(genre: str) -> InlineKeyboardMarkup:
+    keyboard = []
+
+    for slug, anime in ANIME.items():
+        genres = anime.get("genres", [])
+        if genre in genres:
+            keyboard.append(
+                [InlineKeyboardButton(anime["title"], callback_data=f"anime:{slug}")]
+            )
+
+    if not keyboard:
+        keyboard.append(
+            [InlineKeyboardButton("Ничего не найдено", callback_data="catalog")]
+        )
+
+    keyboard.append([InlineKeyboardButton("⬅️ Жанры", callback_data="catalog")])
+    keyboard.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
+    return InlineKeyboardMarkup(keyboard)
+
+
 def build_episode_keyboard(slug: str, ep: int) -> InlineKeyboardMarkup:
     episodes = ANIME[slug]["episodes"]
     has_next = (ep + 1) in episodes
 
     rows = [
         [
-            InlineKeyboardButton("Аниме", callback_data="menu"),
-            InlineKeyboardButton("Серии", callback_data=f"list:{slug}"),
+            InlineKeyboardButton("Аниме", callback_data=f"list:{slug}"),
+            InlineKeyboardButton("Жанры", callback_data="catalog"),
         ]
     ]
 
@@ -132,17 +182,16 @@ async def set_last_message(chat_id: int, message_id: int):
 
 async def show_main_menu(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     """
-    Показати стартовий екран.
-    БЕЗ видалення тут. Видалення робить send_start_message.
+    Стартовый экран: картинка + кнопка "Каталог"
     """
-    caption = "Приятного просмотра ✨\nВыбери аниме:"
+    caption = "Приятного просмотра ✨"
 
     with open(WELCOME_PHOTO, "rb") as photo:
         sent = await context.bot.send_photo(
             chat_id=chat_id,
             photo=photo,
             caption=caption,
-            reply_markup=build_anime_menu(),
+            reply_markup=build_main_menu_keyboard(),
         )
 
     await set_last_message(chat_id, sent.message_id)
@@ -169,7 +218,8 @@ async def show_episode(
         return
 
     source = episode["source"]
-    caption = f"{anime['title']}\nСерия {ep}"
+    genres = ", ".join(anime.get("genres", []))
+    caption = f"{anime['title']} [{genres}]\nСерия {ep}"
 
     sent = await context.bot.send_video(
         chat_id=chat_id,
@@ -237,11 +287,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     chat_id = query.message.chat_id
 
-    # ВАЖЛИВО: в callback-ах нічого не видаляємо, тільки редагуємо
-    # і оновлюємо LAST_MESSAGE на поточне message_id
-
+    # Главное меню
     if data == "menu":
-        caption = "Приятного просмотра ✨\nВыбери аниме:"
+        caption = "Приятного просмотра ✨"
 
         with open(WELCOME_PHOTO, "rb") as photo:
             media = InputMediaPhoto(
@@ -251,12 +299,38 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             await query.message.edit_media(
                 media=media,
-                reply_markup=build_anime_menu(),
+                reply_markup=build_main_menu_keyboard(),
             )
 
         await set_last_message(chat_id, query.message.message_id)
         return
 
+    # Каталог → показать жанры
+    if data == "catalog":
+        caption = "Выбери жанр:"
+
+        await query.message.edit_caption(
+            caption=caption,
+            reply_markup=build_genre_keyboard(),
+        )
+
+        await set_last_message(chat_id, query.message.message_id)
+        return
+
+    # Выбор жанра → показать аниме по жанру
+    if data.startswith("genre:"):
+        genre = data.split(":", 1)[1]
+        caption = f"Жанр: {genre.capitalize()}\nВыбери аниме:"
+
+        await query.message.edit_caption(
+            caption=caption,
+            reply_markup=build_anime_by_genre_keyboard(genre),
+        )
+
+        await set_last_message(chat_id, query.message.message_id)
+        return
+
+    # Выбор аниме → первая серия
     if data.startswith("anime:"):
         slug = data.split(":", 1)[1]
         ep = 1
@@ -270,7 +344,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         source = episode["source"]
-        caption = f"{anime['title']}\nСерия {ep}"
+        genres = ", ".join(anime.get("genres", []))
+        caption = f"{anime['title']} [{genres}]\nСерия {ep}"
 
         media = InputMediaVideo(
             media=source,
@@ -285,6 +360,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await set_last_message(chat_id, query.message.message_id)
         return
 
+    # Выбор конкретной серии из списка
     if data.startswith("ep:"):
         _, slug, ep_str = data.split(":")
         ep = int(ep_str)
@@ -298,7 +374,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         source = episode["source"]
-        caption = f"{anime['title']}\nСерия {ep}"
+        genres = ", ".join(anime.get("genres", []))
+        caption = f"{anime['title']} [{genres}]\nСерия {ep}"
 
         media = InputMediaVideo(
             media=source,
@@ -313,6 +390,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await set_last_message(chat_id, query.message.message_id)
         return
 
+    # Список серий
     if data.startswith("list:"):
         slug = data.split(":", 1)[1]
         anime = ANIME.get(slug)
@@ -329,6 +407,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await set_last_message(chat_id, query.message.message_id)
         return
 
+    # Следующая серия
     if data.startswith("next:"):
         _, slug, ep_str = data.split(":")
         next_ep = int(ep_str) + 1
@@ -343,7 +422,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         source = episode["source"]
-        caption = f"{anime['title']}\nСерия {next_ep}"
+        genres = ", ".join(anime.get("genres", []))
+        caption = f"{anime['title']} [{genres}]\nСерия {next_ep}"
 
         media = InputMediaVideo(
             media=source,
