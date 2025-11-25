@@ -1,7 +1,6 @@
 import os
 import json
 import random
-import asyncio
 from typing import Optional
 
 from telegram import (
@@ -27,7 +26,7 @@ from telegram.ext import (
 BOT_TOKEN = os.environ.get("BOT_TOKEN") or "8421608017:AAGd5ikJ7bAU2OIpkCU8NI4Okbzi2Ed9upQ"
 WELCOME_PHOTO = "images/welcome.jpg"
 
-# Чат, из которого бот берет аниме
+# Чат, из которого бот берёт аниме
 SOURCE_CHAT_ID = -1003362969236  # твой чат с аниме
 
 ANIME_JSON_PATH = "anime.json"
@@ -100,7 +99,7 @@ def save_anime() -> None:
 
         with open(ANIME_JSON_PATH, "w", encoding="utf-8") as f:
             json.dump(data_to_save, f, ensure_ascii=False, indent=2)
-        print("Saved ANIME to anime.json")
+        print(f"Saved ANIME to {ANIME_JSON_PATH}, items:", len(data_to_save))
     except Exception as e:
         print("Failed to save anime.json:", e)
 
@@ -199,6 +198,7 @@ def save_users() -> None:
 
         with open(USERS_JSON_PATH, "w", encoding="utf-8") as f:
             json.dump(data_to_save, f, ensure_ascii=False, indent=2)
+
         print("Saved users to users.json")
 
     except Exception as e:
@@ -814,8 +814,7 @@ async def handle_source_chat_message(update: Update, context: ContextTypes.DEFAU
     if not msg.video:
         return
 
-    result = add_or_update_anime_from_message(msg)
-    print(result)
+    add_or_update_anime_from_message(msg)
 
 
 # ===============================
@@ -860,6 +859,31 @@ async def cmd_fix(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ===============================
+# /export_anime — отправить текущий anime.json
+# ===============================
+async def cmd_export_anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Отправляет актуальный anime.json в чат.
+    Полезно для Railway: кидаешь серии боту на хостинге, потом /export_anime и забираешь файл.
+    """
+    # на всякий случай сохраним текущее состояние ANIME в файл
+    save_anime()
+
+    if not os.path.exists(ANIME_JSON_PATH):
+        await update.message.reply_text("❌ Файл anime.json не найден.")
+        return
+
+    try:
+        await update.message.reply_document(
+            document=open(ANIME_JSON_PATH, "rb"),
+            filename="anime.json",
+            caption="Вот твой актуальный anime.json 📦",
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ Не удалось отправить файл: {e}")
+
+
+# ===============================
 # /start
 # ===============================
 async def send_start_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -894,9 +918,9 @@ async def debug_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ===============================
-# BOOT (ASYNC)
+# BOOT
 # ===============================
-async def main():
+def main():
     # Загружаем существующие данные при старте
     load_anime()
     load_users()
@@ -908,6 +932,9 @@ async def main():
 
     # /fix
     app.add_handler(CommandHandler("fix", cmd_fix))
+
+    # /export_anime
+    app.add_handler(CommandHandler("export_anime", cmd_export_anime))
 
     # callbacks (кнопки)
     app.add_handler(CallbackQueryHandler(handle_callback))
@@ -932,17 +959,8 @@ async def main():
     app.add_handler(MessageHandler(filters.VIDEO & ~filters.Chat(SOURCE_CHAT_ID), debug_video))
 
     print("BOT STARTED...")
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
-
-    try:
-        await asyncio.Event().wait()
-    finally:
-        await app.updater.stop()
-        await app.stop()
-        await app.shutdown()
+    app.run_polling(close_loop=False)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
