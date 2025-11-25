@@ -26,7 +26,7 @@ from telegram.ext import (
 BOT_TOKEN = os.environ.get("BOT_TOKEN") or "8421608017:AAGd5ikJ7bAU2OIpkCU8NI4Okbzi2Ed9upQ"
 WELCOME_PHOTO = "images/welcome.jpg"
 
-# Чат, из которого бот берет аниме
+# Чат, из которого бот берёт аниме
 SOURCE_CHAT_ID = -1003362969236  # твой чат с аниме
 
 ANIME_JSON_PATH = "anime.json"
@@ -35,7 +35,7 @@ USERS_JSON_PATH = "users.json"
 # ===============================
 # IN-MEM STORAGE
 # ===============================
-LAST_MESSAGE: dict[int, int] = {}              # chat_id -> message_id
+LAST_MESSAGE: dict[int, int] = {}              # chat_id -> message_id (последнее "окно" бота)
 LAST_MESSAGE_TYPE: dict[int, str] = {}         # chat_id -> "photo" or "video"
 SEARCH_MODE: dict[int, bool] = {}              # chat_id -> bool
 
@@ -99,7 +99,6 @@ def save_anime() -> None:
 
         with open(ANIME_JSON_PATH, "w", encoding="utf-8") as f:
             json.dump(data_to_save, f, ensure_ascii=False, indent=2)
-        print(f"Saved ANIME to {ANIME_JSON_PATH}, items:", len(data_to_save))
     except Exception as e:
         print("Failed to save anime.json:", e)
 
@@ -198,8 +197,6 @@ def save_users() -> None:
 
         with open(USERS_JSON_PATH, "w", encoding="utf-8") as f:
             json.dump(data_to_save, f, ensure_ascii=False, indent=2)
-
-        print("Saved users to users.json")
 
     except Exception as e:
         print("Failed to save users.json:", e)
@@ -456,6 +453,7 @@ async def send_or_edit_photo(
             LAST_MESSAGE_TYPE[chat_id] = "photo"
             return msg_id
         except Exception:
+            # если не удалось отредактировать (старое или чужое сообщение) — пробуем удалить
             try:
                 await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
             except Exception:
@@ -597,6 +595,7 @@ async def show_episode(chat_id: int, context: ContextTypes.DEFAULT_TYPE, slug: s
     caption = f"{anime['title']}\nСерия {ep}"
     kb = build_episode_keyboard(slug, ep, chat_id)
     await send_or_edit_video(chat_id, context, episode["source"], caption, kb)
+    # Всегда запоминаем прогресс
     USER_PROGRESS[chat_id] = {"slug": slug, "ep": ep}
     save_users()
     SEARCH_MODE[chat_id] = False
@@ -686,10 +685,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data.startswith("anime:"):
         slug = data.split(":", 1)[1]
+        # Начинаем с 1 серии и обновляем прогресс
         await show_episode(chat_id, context, slug, 1)
         return
 
     if data == "back":
+        # Кнопка "Назад" всегда пытается вернуть к текущей серии,
+        # а если прогресса нет — в главное меню
         prog = USER_PROGRESS.get(chat_id)
         if prog:
             slug = prog["slug"]
@@ -859,36 +861,12 @@ async def cmd_fix(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ===============================
-# /export_anime — отправить текущий anime.json
-# ===============================
-async def cmd_export_anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Отправляет актуальный anime.json в чат.
-    Полезно для Railway: кидаешь серии боту на хостинге, потом /export_anime и забираешь файл.
-    """
-    # на всякий случай сохраним текущее состояние ANIME в файл
-    save_anime()
-
-    if not os.path.exists(ANIME_JSON_PATH):
-        await update.message.reply_text("❌ Файл anime.json не найден.")
-        return
-
-    try:
-        await update.message.reply_document(
-            document=open(ANIME_JSON_PATH, "rb"),
-            filename="anime.json",
-            caption="Вот твой актуальный anime.json 📦",
-        )
-    except Exception as e:
-        await update.message.reply_text(f"❌ Не удалось отправить файл: {e}")
-
-
-# ===============================
 # /start
 # ===============================
 async def send_start_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
 
+    # Удаляем предыдущее "окно" бота, если оно у нас записано
     last_id = LAST_MESSAGE.get(chat_id)
     if last_id:
         try:
@@ -900,6 +878,7 @@ async def send_start_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     await show_main_menu(chat_id, context)
 
+    # Удаляем сообщение с /start
     try:
         if update.message:
             await update.message.delete()
@@ -933,9 +912,6 @@ def main():
     # /fix
     app.add_handler(CommandHandler("fix", cmd_fix))
 
-    # /export_anime
-    app.add_handler(CommandHandler("export_anime", cmd_export_anime))
-
     # callbacks (кнопки)
     app.add_handler(CallbackQueryHandler(handle_callback))
 
@@ -959,7 +935,7 @@ def main():
     app.add_handler(MessageHandler(filters.VIDEO & ~filters.Chat(SOURCE_CHAT_ID), debug_video))
 
     print("BOT STARTED...")
-    app.run_polling(close_loop=False)
+    app.run_polling()
 
 
 if __name__ == "__main__":
