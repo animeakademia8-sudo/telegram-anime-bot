@@ -1,8 +1,13 @@
 {
   "progress": {
     "852405425": {
-      "slug": "pridvornii",
-      "ep": 1
+      "ep": 1,
+      "pridvornii": 1,
+      "ga4iakyta": 7
+    },
+    "710610332": {
+      "ga4iakyta": 4,
+      "pridvornii": 1
     }
   },
   "favorites": {
@@ -15,6 +20,10 @@
       [
         "pridvornii",
         1
+      ],
+      [
+        "ga4iakyta",
+        7
       ]
     ]
   }

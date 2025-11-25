@@ -27,14 +27,12 @@ from telegram.ext import (
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
 WELCOME_PHOTO = "images/welcome.jpg"
-
 SOURCE_CHAT_ID = -1003362969236
 
 ANIME_JSON_PATH = "anime.json"
 USERS_JSON_PATH = "users.json"
 
 ADMIN_ID = 852405425
-
 
 # ===============================
 # IN-MEM STORAGE
@@ -47,10 +45,10 @@ SEARCH_MODE: dict[int, bool] = {}
 USER_PROGRESS: dict[int, dict[str, int]] = {}
 
 # user_id -> set(slug)
-USER_FAVORITES: dict[int, set] = {}
+USER_FAVORITES: dict[int, set[str]] = {}
 
-# user_id -> set((slug, ep))
-USER_WATCHED: dict[int, set] = {}
+# user_id -> set(slug)  # ТАЙТЛЫ, которые отмечены как "просмотренные"
+USER_WATCHED_TITLES: dict[int, set[str]] = {}
 
 # slug -> {title, genres, episodes{ep: {source}}}
 ANIME: dict[str, dict] = {}
@@ -108,11 +106,11 @@ def save_anime() -> None:
 # JSON SAVE/LOAD: USERS
 # ===============================
 def load_users() -> None:
-    global USER_PROGRESS, USER_FAVORITES, USER_WATCHED
+    global USER_PROGRESS, USER_FAVORITES, USER_WATCHED_TITLES
     if not os.path.exists(USERS_JSON_PATH):
         USER_PROGRESS = {}
         USER_FAVORITES = {}
-        USER_WATCHED = {}
+        USER_WATCHED_TITLES = {}
         return
 
     try:
@@ -131,7 +129,8 @@ def load_users() -> None:
                 for slug, ep in prog_map.items():
                     if isinstance(slug, str) and isinstance(ep, int):
                         res[slug] = ep
-                USER_PROGRESS[user_id] = res
+                if res:
+                    USER_PROGRESS[user_id] = res
 
         # favorites: user_id -> [slug, ...]
         USER_FAVORITES = {}
@@ -141,25 +140,25 @@ def load_users() -> None:
             except ValueError:
                 continue
             if isinstance(fav_list, list):
-                USER_FAVORITES[user_id] = set(fav_list)
+                USER_FAVORITES[user_id] = set(
+                    [slug for slug in fav_list if isinstance(slug, str)]
+                )
             else:
                 USER_FAVORITES[user_id] = set()
 
-        # watched: user_id -> [[slug, ep], ...]
-        USER_WATCHED = {}
-        for user_id_str, watched_list in data.get("watched", {}).items():
+        # watched_titles: user_id -> [slug, ...]
+        USER_WATCHED_TITLES = {}
+        for user_id_str, wt_list in data.get("watched_titles", {}).items():
             try:
                 user_id = int(user_id_str)
             except ValueError:
                 continue
-            watched_set = set()
-            if isinstance(watched_list, list):
-                for item in watched_list:
-                    if isinstance(item, list) and len(item) == 2:
-                        slug, ep = item
-                        if isinstance(slug, str) and isinstance(ep, int):
-                            watched_set.add((slug, ep))
-            USER_WATCHED[user_id] = watched_set
+            if isinstance(wt_list, list):
+                USER_WATCHED_TITLES[user_id] = set(
+                    [slug for slug in wt_list if isinstance(slug, str)]
+                )
+            else:
+                USER_WATCHED_TITLES[user_id] = set()
 
         print("Loaded users from users.json")
 
@@ -167,7 +166,7 @@ def load_users() -> None:
         print("Failed to load users.json:", e)
         USER_PROGRESS = {}
         USER_FAVORITES = {}
-        USER_WATCHED = {}
+        USER_WATCHED_TITLES = {}
 
 
 def save_users() -> None:
@@ -175,7 +174,7 @@ def save_users() -> None:
         data_to_save = {
             "progress": {},
             "favorites": {},
-            "watched": {},
+            "watched_titles": {},
         }
 
         # progress: user_id -> {slug: ep}
@@ -186,12 +185,9 @@ def save_users() -> None:
         for user_id, fav_set in USER_FAVORITES.items():
             data_to_save["favorites"][str(user_id)] = list(fav_set)
 
-        # watched
-        for user_id, watched_set in USER_WATCHED.items():
-            pairs = []
-            for slug, ep in watched_set:
-                pairs.append([slug, ep])
-            data_to_save["watched"][str(user_id)] = pairs
+        # watched titles
+        for user_id, wt_set in USER_WATCHED_TITLES.items():
+            data_to_save["watched_titles"][str(user_id)] = list(wt_set)
 
         with open(USERS_JSON_PATH, "w", encoding="utf-8") as f:
             json.dump(data_to_save, f, ensure_ascii=False, indent=2)
@@ -341,13 +337,22 @@ def build_episode_keyboard(slug: str, ep: int, chat_id: int) -> InlineKeyboardMa
     else:
         fav_button = InlineKeyboardButton("💖 В избранное", callback_data=f"fav_add:{slug}")
 
-    watched_set = USER_WATCHED.get(chat_id, set())
-    if (slug, ep) in watched_set:
-        watched_button = InlineKeyboardButton("👁 Убрать из просмотренного", callback_data=f"unwatch:{slug}:{ep}")
+    watched_titles = USER_WATCHED_TITLES.get(chat_id, set())
+    if slug in watched_titles:
+        watched_button = InlineKeyboardButton(
+            "👁 Убрать тайтл из просмотренного",
+            callback_data=f"unwatch_title:{slug}",
+        )
     else:
-        watched_button = InlineKeyboardButton("👁 В просмотренное", callback_data=f"watch:{slug}:{ep}")
+        watched_button = InlineKeyboardButton(
+            "👁 Тайтл просмотрен",
+            callback_data=f"watch_title:{slug}",
+        )
 
     rows = [
+        [
+            InlineKeyboardButton("📺 Серии", callback_data=f"list:{slug}"),
+        ],
         [fav_button],
         [watched_button],
     ]
@@ -394,12 +399,12 @@ def build_favorites_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-def build_watched_keyboard(chat_id: int) -> InlineKeyboardMarkup:
-    watched = USER_WATCHED.get(chat_id, set())
+def build_watched_titles_keyboard(chat_id: int) -> InlineKeyboardMarkup:
+    watched_titles = USER_WATCHED_TITLES.get(chat_id, set())
     rows = []
-    for slug, ep in sorted(watched):
+    for slug in sorted(watched_titles):
         title = ANIME.get(slug, {}).get("title", slug)
-        rows.append([InlineKeyboardButton(f"{title} — серия {ep}", callback_data=f"ep:{slug}:{ep}")])
+        rows.append([InlineKeyboardButton(title, callback_data=f"anime:{slug}")])
     if not rows:
         rows = [[InlineKeyboardButton("Пусто", callback_data="menu")]]
     rows.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
@@ -407,11 +412,6 @@ def build_watched_keyboard(chat_id: int) -> InlineKeyboardMarkup:
 
 
 def build_continue_keyboard(chat_id: int) -> InlineKeyboardMarkup:
-    """
-    Для каждого тайтла делаем две строки:
-    1) ▶ Название — с N серии  (открывает эп)
-    2) ✖ Убрать из продолжения (только удаляет из USER_PROGRESS)
-    """
     user_prog = USER_PROGRESS.get(chat_id, {})
     rows = []
 
@@ -422,22 +422,46 @@ def build_continue_keyboard(chat_id: int) -> InlineKeyboardMarkup:
 
     for slug, ep in user_prog.items():
         title = ANIME.get(slug, {}).get("title", slug)
-        # строка продолжения
         rows.append([
             InlineKeyboardButton(
-                f"▶ {title} — с {ep} серии",
+                f"{title} — с {ep} серии",
                 callback_data=f"cont:{slug}",
-            )
-        ])
-        # строка удаления
-        rows.append([
-            InlineKeyboardButton(
-                f"✖ Убрать «{title}» из продолжения",
-                callback_data=f"cont_remove:{slug}",
             )
         ])
 
     rows.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
+    return InlineKeyboardMarkup(rows)
+
+
+def build_continue_item_keyboard(chat_id: int, slug: str) -> InlineKeyboardMarkup:
+    ep = USER_PROGRESS.get(chat_id, {}).get(slug)
+    title = ANIME.get(slug, {}).get("title", slug)
+
+    rows = []
+
+    if ep:
+        rows.append([
+            InlineKeyboardButton(
+                f"▶ Продолжить «{title}» c {ep} серии",
+                callback_data=f"cont_play:{slug}",
+            )
+        ])
+
+    rows.append([
+        InlineKeyboardButton(
+            f"✖ Убрать «{title}» из продолжения",
+            callback_data=f"cont_remove:{slug}",
+        )
+    ])
+
+    rows.append([
+        InlineKeyboardButton("⬅️ Назад к списку", callback_data="continue_list")
+    ])
+
+    rows.append([
+        InlineKeyboardButton("🍄 Меню", callback_data="menu")
+    ])
+
     return InlineKeyboardMarkup(rows)
 
 
@@ -642,15 +666,15 @@ async def show_favorites(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     SEARCH_MODE[chat_id] = False
 
 
-async def show_watched(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
-    caption = "Просмотренное:"
-    kb = build_watched_keyboard(chat_id)
+async def show_watched_titles(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
+    caption = "Просмотренные тайтлы:"
+    kb = build_watched_titles_keyboard(chat_id)
     await edit_caption_only(chat_id, context, caption, kb)
     SEARCH_MODE[chat_id] = False
 
 
-async def show_continue_menu(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
-    caption = "Что хочешь продолжить? ⭐"
+async def show_continue_list(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
+    caption = "Тайтлы, которые ты сейчас смотришь:"
     kb = build_continue_keyboard(chat_id)
     await edit_caption_only(chat_id, context, caption, kb)
     SEARCH_MODE[chat_id] = False
@@ -678,38 +702,39 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "continue":
-        user_prog = USER_PROGRESS.get(chat_id, {})
-        if not user_prog:
-            await query.answer("Ты ещё ничего не смотришь", show_alert=True)
-            await show_main_menu(chat_id, context)
-            return
+        await show_continue_list(chat_id, context)
+        return
 
-        if len(user_prog) == 1:
-            slug, ep = next(iter(user_prog.items()))
-            await show_episode(chat_id, context, slug, ep)
-            return
-
-        await show_continue_menu(chat_id, context)
+    if data == "continue_list":
+        await show_continue_list(chat_id, context)
         return
 
     if data.startswith("cont:"):
-        _, slug = data.split(":", 1)
+        slug = data.split(":", 1)[1]
+        caption = "Что сделать с этим тайтлом?"
+        kb = build_continue_item_keyboard(chat_id, slug)
+        await edit_caption_only(chat_id, context, caption, kb)
+        return
+
+    if data.startswith("cont_play:"):
+        slug = data.split(":", 1)[1]
         ep = USER_PROGRESS.get(chat_id, {}).get(slug)
         if not ep:
-            await query.answer("Прогресс по этому тайтлу не найден", show_alert=True)
-            await show_continue_menu(chat_id, context)
+            await query.answer("Нет сохранённого прогресса для этого тайтла.", show_alert=True)
+            await show_continue_list(chat_id, context)
             return
         await show_episode(chat_id, context, slug, ep)
         return
 
     if data.startswith("cont_remove:"):
-        _, slug = data.split(":", 1)
-        if chat_id in USER_PROGRESS:
-            USER_PROGRESS[chat_id].pop(slug, None)
+        slug = data.split(":", 1)[1]
+        if chat_id in USER_PROGRESS and slug in USER_PROGRESS[chat_id]:
+            del USER_PROGRESS[chat_id][slug]
             if not USER_PROGRESS[chat_id]:
-                USER_PROGRESS.pop(chat_id, None)
-        save_users()
-        await show_continue_menu(chat_id, context)
+                del USER_PROGRESS[chat_id]
+            save_users()
+        await query.answer("Убрано из продолжения.")
+        await show_continue_list(chat_id, context)
         return
 
     if data == "search":
@@ -723,7 +748,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "watched":
-        await show_watched(chat_id, context)
+        await show_watched_titles(chat_id, context)
         return
 
     if data.startswith("genre:"):
@@ -775,19 +800,20 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_episode(chat_id, context, slug, ep)
         return
 
-    if data.startswith("watch:"):
-        _, slug, ep_str = data.split(":")
-        ep = int(ep_str)
-        USER_WATCHED.setdefault(chat_id, set()).add((slug, ep))
+    # ====== Новая логика "просмотренное" — по тайтлу ======
+    if data.startswith("watch_title:"):
+        slug = data.split(":", 1)[1]
+        USER_WATCHED_TITLES.setdefault(chat_id, set()).add(slug)
         save_users()
+        ep = USER_PROGRESS.get(chat_id, {}).get(slug, 1)
         await show_episode(chat_id, context, slug, ep)
         return
 
-    if data.startswith("unwatch:"):
-        _, slug, ep_str = data.split(":")
-        ep = int(ep_str)
-        USER_WATCHED.setdefault(chat_id, set()).discard((slug, ep))
+    if data.startswith("unwatch_title:"):
+        slug = data.split(":", 1)[1]
+        USER_WATCHED_TITLES.setdefault(chat_id, set()).discard(slug)
         save_users()
+        ep = USER_PROGRESS.get(chat_id, {}).get(slug, 1)
         await show_episode(chat_id, context, slug, ep)
         return
 
@@ -846,7 +872,7 @@ async def handle_source_chat_message(update: Update, context: ContextTypes.DEFAU
 
 
 # ===============================
-# /fix — обновить серию по исправленной подписи
+# /fix
 # ===============================
 async def cmd_fix(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
@@ -879,7 +905,7 @@ async def cmd_fix(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ===============================
-# /dump_all — выслать anime.json и users.json (только админу)
+# /dump_all
 # ===============================
 async def cmd_dump_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
@@ -916,7 +942,7 @@ async def cmd_dump_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             await msg.reply_text(f"❌ Не удалось отправить users.json: {e}")
     else:
-        await msg.reply_text("⚠️ Файл users.json ещё не создан (никто не смотрел/не добавлял ничего).")
+        await msg.reply_text("⚠️ Файл users.json ещё не создан.")
 
 
 # ===============================
