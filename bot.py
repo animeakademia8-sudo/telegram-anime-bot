@@ -26,7 +26,7 @@ from telegram.ext import (
 BOT_TOKEN = os.environ.get("BOT_TOKEN") or "8421608017:AAGd5ikJ7bAU2OIpkCU8NI4Okbzi2Ed9upQ"
 WELCOME_PHOTO = "images/welcome.jpg"
 
-# Чат, из которого бот берёт аниме
+# Чат, из которого бот берётт аниме
 SOURCE_CHAT_ID = -1003362969236  # твой чат с аниме
 
 ANIME_JSON_PATH = "anime.json"
