@@ -26,11 +26,13 @@ from telegram.ext import (
 BOT_TOKEN = os.environ.get("BOT_TOKEN") or "8421608017:AAGd5ikJ7bAU2OIpkCU8NI4Okbzi2Ed9upQ"
 WELCOME_PHOTO = "images/welcome.jpg"
 
-# Чат, из которого бот берётт аниме
+# Чат, из которого бот берёт аниме
 SOURCE_CHAT_ID = -1003362969236  # твой чат с аниме
 
-ANIME_JSON_PATH = "anime.json"
-USERS_JSON_PATH = "users.json"
+# Базовая папка (где лежит этот файл)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ANIME_JSON_PATH = os.path.join(BASE_DIR, "anime.json")
+USERS_JSON_PATH = os.path.join(BASE_DIR, "users.json")
 
 # ===============================
 # IN-MEM STORAGE
@@ -39,7 +41,6 @@ LAST_MESSAGE: dict[int, int] = {}              # chat_id -> message_id
 LAST_MESSAGE_TYPE: dict[int, str] = {}         # chat_id -> "photo" or "video"
 SEARCH_MODE: dict[int, bool] = {}              # chat_id -> bool
 
-# !!!!! ВАЖНО: здесь ключ — user_id, а не chat_id
 # user_id -> {"slug": str, "ep": int}
 USER_PROGRESS: dict[int, dict] = {}
 
@@ -60,6 +61,7 @@ def load_anime() -> None:
     """Загружаем ANIME из anime.json, если файл существует."""
     global ANIME
     if not os.path.exists(ANIME_JSON_PATH):
+        print("anime.json not found, starting with empty ANIME")
         ANIME = {}
         return
     try:
@@ -100,6 +102,7 @@ def save_anime() -> None:
 
         with open(ANIME_JSON_PATH, "w", encoding="utf-8") as f:
             json.dump(data_to_save, f, ensure_ascii=False, indent=2)
+        print("ANIME saved to", ANIME_JSON_PATH)
     except Exception as e:
         print("Failed to save anime.json:", e)
 
@@ -111,6 +114,7 @@ def load_users() -> None:
     """Загружаем USER_PROGRESS, USER_FAVORITES, USER_WATCHED из users.json."""
     global USER_PROGRESS, USER_FAVORITES, USER_WATCHED
     if not os.path.exists(USERS_JSON_PATH):
+        print("users.json not found, starting with empty users")
         USER_PROGRESS = {}
         USER_FAVORITES = {}
         USER_WATCHED = {}
@@ -198,6 +202,8 @@ def save_users() -> None:
 
         with open(USERS_JSON_PATH, "w", encoding="utf-8") as f:
             json.dump(data_to_save, f, ensure_ascii=False, indent=2)
+
+        print("Users saved to", USERS_JSON_PATH)
 
     except Exception as e:
         print("Failed to save users.json:", e)
@@ -340,7 +346,7 @@ def build_anime_by_genre_keyboard(genre: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
-def build_episode_keyboard(slug: str, ep: int, user_id: int) -> InlineKeyboardMarkup:
+def build_episode_keyboard(slug: str, ep: int, chat_or_user_id: int) -> InlineKeyboardMarkup:
     episodes = ANIME[slug]["episodes"]
     has_prev = (ep - 1) in episodes
     has_next = (ep + 1) in episodes
@@ -351,13 +357,13 @@ def build_episode_keyboard(slug: str, ep: int, user_id: int) -> InlineKeyboardMa
     if has_next:
         nav.append(InlineKeyboardButton("Следующая ▶️", callback_data=f"next:{slug}:{ep}"))
 
-    fav_set = USER_FAVORITES.get(user_id, set())
+    fav_set = USER_FAVORITES.get(chat_or_user_id, set())
     if slug in fav_set:
         fav_button = InlineKeyboardButton("💔 Убрать из избранного", callback_data=f"fav_remove:{slug}")
     else:
         fav_button = InlineKeyboardButton("💖 В избранное", callback_data=f"fav_add:{slug}")
 
-    watched_set = USER_WATCHED.get(user_id, set())
+    watched_set = USER_WATCHED.get(chat_or_user_id, set())
     if (slug, ep) in watched_set:
         watched_button = InlineKeyboardButton("👁 Убрать из просмотренного", callback_data=f"unwatch:{slug}:{ep}")
     else:
@@ -393,7 +399,7 @@ def build_episode_list_keyboard(slug: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-def build_anime_menu(user_id: int) -> InlineKeyboardMarkup:
+def build_anime_menu(chat_or_user_id: int) -> InlineKeyboardMarkup:
     keyboard = []
     for slug, anime in ANIME.items():
         keyboard.append([InlineKeyboardButton(anime["title"], callback_data=f"anime:{slug}")])
@@ -403,8 +409,8 @@ def build_anime_menu(user_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
-def build_favorites_keyboard(user_id: int) -> InlineKeyboardMarkup:
-    favs = USER_FAVORITES.get(user_id, set())
+def build_favorites_keyboard(chat_or_user_id: int) -> InlineKeyboardMarkup:
+    favs = USER_FAVORITES.get(chat_or_user_id, set())
     rows = []
     for slug in favs:
         title = ANIME.get(slug, {}).get("title", slug)
@@ -415,8 +421,8 @@ def build_favorites_keyboard(user_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-def build_watched_keyboard(user_id: int) -> InlineKeyboardMarkup:
-    watched = USER_WATCHED.get(user_id, set())
+def build_watched_keyboard(chat_or_user_id: int) -> InlineKeyboardMarkup:
+    watched = USER_WATCHED.get(chat_or_user_id, set())
     rows = []
     for slug, ep in sorted(watched):
         title = ANIME.get(slug, {}).get("title", slug)
@@ -568,9 +574,9 @@ async def show_genres(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     SEARCH_MODE[chat_id] = False
 
 
-async def show_anime_list(chat_id: int, user_id: int, context: ContextTypes.DEFAULT_TYPE):
+async def show_anime_list(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     caption = "Список аниме:"
-    kb = build_anime_menu(user_id)
+    kb = build_anime_menu(chat_id)
     await edit_caption_only(chat_id, context, caption, kb)
     SEARCH_MODE[chat_id] = False
 
@@ -582,7 +588,7 @@ async def show_anime_by_genre(chat_id: int, context: ContextTypes.DEFAULT_TYPE, 
     SEARCH_MODE[chat_id] = False
 
 
-async def show_episode(chat_id: int, user_id: int, context: ContextTypes.DEFAULT_TYPE, slug: str, ep: int):
+async def show_episode(chat_id: int, context: ContextTypes.DEFAULT_TYPE, slug: str, ep: int):
     anime = ANIME.get(slug)
     if not anime:
         await edit_caption_only(chat_id, context, "Аниме не найдено", build_main_menu_keyboard(chat_id))
@@ -593,8 +599,11 @@ async def show_episode(chat_id: int, user_id: int, context: ContextTypes.DEFAULT
         return
 
     caption = f"{anime['title']}\nСерия {ep}"
-    kb = build_episode_keyboard(slug, ep, user_id)
+    kb = build_episode_keyboard(slug, ep, chat_id)
     await send_or_edit_video(chat_id, context, episode["source"], caption, kb)
+
+    # сохраняем прогресс по user_id
+    user_id = chat_id  # если бот в личке; если в группе — можно поменять на update.effective_user.id
     USER_PROGRESS[user_id] = {"slug": slug, "ep": ep}
     save_users()
     SEARCH_MODE[chat_id] = False
@@ -611,24 +620,24 @@ async def show_episode_list(chat_id: int, context: ContextTypes.DEFAULT_TYPE, sl
     SEARCH_MODE[chat_id] = False
 
 
-async def show_random(chat_id: int, user_id: int, context: ContextTypes.DEFAULT_TYPE):
+async def show_random(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     if not ANIME:
         await edit_caption_only(chat_id, context, "Пока нет доступных аниме 😔", build_main_menu_keyboard(chat_id))
         return
     slug = random.choice(list(ANIME.keys()))
-    await show_episode(chat_id, user_id, context, slug, 1)
+    await show_episode(chat_id, context, slug, 1)
 
 
-async def show_favorites(chat_id: int, user_id: int, context: ContextTypes.DEFAULT_TYPE):
+async def show_favorites(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     caption = "Избранное:"
-    kb = build_favorites_keyboard(user_id)
+    kb = build_favorites_keyboard(chat_id)
     await edit_caption_only(chat_id, context, caption, kb)
     SEARCH_MODE[chat_id] = False
 
 
-async def show_watched(chat_id: int, user_id: int, context: ContextTypes.DEFAULT_TYPE):
+async def show_watched(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     caption = "Просмотренное:"
-    kb = build_watched_keyboard(user_id)
+    kb = build_watched_keyboard(chat_id)
     await edit_caption_only(chat_id, context, caption, kb)
     SEARCH_MODE[chat_id] = False
 
@@ -641,7 +650,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data = query.data
     chat_id = query.message.chat_id
-    user_id = query.from_user.id
+
+    user_id = query.from_user.id  # для прогресса/избранного/просмотренного
 
     if data == "menu":
         await show_main_menu(chat_id, context)
@@ -652,7 +662,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "random":
-        await show_random(chat_id, user_id, context)
+        await show_random(chat_id, context)
         return
 
     if data == "continue":
@@ -661,7 +671,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("Ты ещё ничего не смотрел", show_alert=True)
             await show_main_menu(chat_id, context)
             return
-        await show_episode(chat_id, user_id, context, prog["slug"], prog["ep"])
+        await show_episode(chat_id, context, prog["slug"], prog["ep"])
         return
 
     if data == "search":
@@ -671,11 +681,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "favorites":
-        await show_favorites(chat_id, user_id, context)
+        await show_favorites(user_id, context)
         return
 
     if data == "watched":
-        await show_watched(chat_id, user_id, context)
+        await show_watched(user_id, context)
         return
 
     if data.startswith("genre:"):
@@ -685,7 +695,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data.startswith("anime:"):
         slug = data.split(":", 1)[1]
-        await show_episode(chat_id, user_id, context, slug, 1)
+        await show_episode(chat_id, context, slug, 1)
         return
 
     if data == "back":
@@ -693,7 +703,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if prog:
             slug = prog["slug"]
             ep = prog["ep"]
-            await show_episode(chat_id, user_id, context, slug, ep)
+            await show_episode(chat_id, context, slug, ep)
         else:
             await show_main_menu(chat_id, context)
         return
@@ -706,19 +716,19 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("ep:"):
         _, slug, ep_str = data.split(":")
         ep = int(ep_str)
-        await show_episode(chat_id, user_id, context, slug, ep)
+        await show_episode(chat_id, context, slug, ep)
         return
 
     if data.startswith("next:"):
         _, slug, ep_str = data.split(":")
         current = int(ep_str)
-        await show_episode(chat_id, user_id, context, slug, current + 1)
+        await show_episode(chat_id, context, slug, current + 1)
         return
 
     if data.startswith("prev:"):
         _, slug, ep_str = data.split(":")
         current = int(ep_str)
-        await show_episode(chat_id, user_id, context, slug, current - 1)
+        await show_episode(chat_id, context, slug, current - 1)
         return
 
     if data.startswith("fav_add:"):
@@ -729,7 +739,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ep = 1
         if prog and prog.get("slug") == slug:
             ep = prog.get("ep", 1)
-        await show_episode(chat_id, user_id, context, slug, ep)
+        await show_episode(chat_id, context, slug, ep)
         return
 
     if data.startswith("fav_remove:"):
@@ -740,7 +750,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ep = 1
         if prog and prog.get("slug") == slug:
             ep = prog.get("ep", 1)
-        await show_episode(chat_id, user_id, context, slug, ep)
+        await show_episode(chat_id, context, slug, ep)
         return
 
     if data.startswith("watch:"):
@@ -748,7 +758,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ep = int(ep_str)
         USER_WATCHED.setdefault(user_id, set()).add((slug, ep))
         save_users()
-        await show_episode(chat_id, user_id, context, slug, ep)
+        await show_episode(chat_id, context, slug, ep)
         return
 
     if data.startswith("unwatch:"):
@@ -756,7 +766,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ep = int(ep_str)
         USER_WATCHED.setdefault(user_id, set()).discard((slug, ep))
         save_users()
-        await show_episode(chat_id, user_id, context, slug, ep)
+        await show_episode(chat_id, context, slug, ep)
         return
 
 
@@ -767,7 +777,6 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
         return
     chat_id = update.effective_chat.id
-    user_id = update.effective_user.id
     text = (update.message.text or "").strip()
 
     if not SEARCH_MODE.get(chat_id, False):
@@ -795,7 +804,7 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         SEARCH_MODE[chat_id] = False
         return
 
-    await show_episode(chat_id, user_id, context, found_slug, 1)
+    await show_episode(chat_id, context, found_slug, 1)
     SEARCH_MODE[chat_id] = False
 
 
@@ -814,7 +823,8 @@ async def handle_source_chat_message(update: Update, context: ContextTypes.DEFAU
     if not msg.video:
         return
 
-    add_or_update_anime_from_message(msg)
+    res = add_or_update_anime_from_message(msg)
+    print("SOURCE_CHAT update:", res)
 
 
 # ===============================
