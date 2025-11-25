@@ -593,7 +593,7 @@ async def edit_caption_only(
 # SCREENS
 # ===============================
 async def show_main_menu(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
-    caption = "Приятного просмотра ✨\nВыбери опцию:"
+    caption = "Приятного просмотра ✨\nВсе управление через кнопки ниже."
     kb = build_main_menu_keyboard(chat_id)
     await send_or_edit_photo(chat_id, context, WELCOME_PHOTO, caption, kb)
     SEARCH_MODE[chat_id] = False
@@ -739,7 +739,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "search":
         SEARCH_MODE[chat_id] = True
-        caption = "🔍 Введи название аниме сообщением (или его часть)."
+        caption = "🔍 Введи название аниме сообщением (или его часть).\n(Текст потом удалю, реагирую только на кнопки)"
         await edit_caption_only(chat_id, context, caption, build_main_menu_keyboard(chat_id))
         return
 
@@ -800,7 +800,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_episode(chat_id, context, slug, ep)
         return
 
-    # ====== Новая логика "просмотренное" — по тайтлу ======
     if data.startswith("watch_title:"):
         slug = data.split(":", 1)[1]
         USER_WATCHED_TITLES.setdefault(chat_id, set()).add(slug)
@@ -819,7 +818,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ===============================
-# TEXT (SEARCH)
+# TEXT (SEARCH) — с удалением
 # ===============================
 async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
@@ -827,7 +826,12 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     text = (update.message.text or "").strip()
 
+    # Если это текст от пользователя, а не команда и мы не в режиме поиска — сразу удаляем
     if not SEARCH_MODE.get(chat_id, False):
+        try:
+            await update.message.delete()
+        except Exception:
+            pass
         return
 
     q = text.lower()
@@ -837,6 +841,7 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             found_slug = slug
             break
 
+    # Удаляем сообщение с текстом поиска
     try:
         await update.message.delete()
     except Exception:
@@ -846,7 +851,7 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await edit_caption_only(
             chat_id,
             context,
-            "😔 Ничего не нашёл по этому названию.\nПопробуй другое слово.",
+            "😔 Ничего не нашёл по этому названию.\nПопробуй другое слово.\n(Я реагирую только на кнопки)",
             build_main_menu_keyboard(chat_id),
         )
         SEARCH_MODE[chat_id] = False
@@ -854,6 +859,34 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await show_episode(chat_id, context, found_slug, 1)
     SEARCH_MODE[chat_id] = False
+
+
+# ===============================
+# EXTRA CLEANUP ХЭНДЛЕР
+# ===============================
+async def cleanup_non_command_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    На всякий случай: удаляем любые некомандные сообщения,
+    если они не из SOURCE_CHAT_ID. Чтобы чат не засирался.
+    """
+    msg = update.message
+    if not msg:
+        return
+    chat_id = msg.chat_id
+
+    # Сообщения из SOURCE_CHAT_ID не трогаем
+    if chat_id == SOURCE_CHAT_ID:
+        return
+
+    # Команды не трогаем (их обрабатывают CommandHandler'ы)
+    if msg.text and msg.text.startswith("/"):
+        return
+
+    # Всё остальное удаляем
+    try:
+        await msg.delete()
+    except Exception:
+        pass
 
 
 # ===============================
@@ -997,6 +1030,7 @@ def main():
 
     app.add_handler(CallbackQueryHandler(handle_callback))
 
+    # Поиск — только текст, не команды, не из SOURCE_CHAT_ID
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND & ~filters.Chat(SOURCE_CHAT_ID),
@@ -1004,6 +1038,7 @@ def main():
         )
     )
 
+    # Сообщения из SOURCE_CHAT_ID (автодобавление аниме)
     app.add_handler(
         MessageHandler(
             filters.Chat(SOURCE_CHAT_ID) & filters.VIDEO,
@@ -1011,7 +1046,16 @@ def main():
         )
     )
 
+    # debug: видео не из SOURCE_CHAT_ID
     app.add_handler(MessageHandler(filters.VIDEO & ~filters.Chat(SOURCE_CHAT_ID), debug_video))
+
+    # Общий уборочный хэндлер — на САМОМ КОНЦЕ
+    app.add_handler(
+        MessageHandler(
+            filters.ALL,
+            cleanup_non_command_messages,
+        )
+    )
 
     print("BOT STARTED...")
     app.run_polling()
