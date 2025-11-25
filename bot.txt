@@ -35,8 +35,8 @@ SOURCE_CHAT_ID = -1003362969236  # если у тебя другой — пом�
 ANIME_JSON_PATH = "anime.json"
 USERS_JSON_PATH = "users.json"
 
-# ТВОЙ ID В ТЕЛЕГРАМ (ты его дал: 852405426)
-ADMIN_ID = 852405426
+# ТВОЙ ID В ТЕЛЕГРАМ (ты его дал: 852405425)
+ADMIN_ID = 852405425
 
 
 # ===============================
@@ -813,7 +813,7 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===============================
 async def handle_source_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Автодобавление новых серий: сюда приходят сообщения из чата с аниме (SOURCE_CHAT_ID).
+    Автодобавление новых серий: сюда приходят сообщения из чата с анме (SOURCE_CHAT_ID).
     """
     msg = update.message
     if not msg:
