@@ -24,18 +24,20 @@ from telegram.ext import (
 # CONFIG
 # ===============================
 
-# Токен берём только из переменной окружения BOT_TOKEN
+# Токен берём только из переменной окружения (на Railway он в Settings → Variables)
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN environment variable is not set")
 
 WELCOME_PHOTO = "images/welcome.jpg"
 
 # Чат, из которого бот берёт аниме
-SOURCE_CHAT_ID = -1003362969236  # твой чат с аниме
+SOURCE_CHAT_ID = -1003362969236  # если у тебя другой — поменяй
 
 ANIME_JSON_PATH = "anime.json"
 USERS_JSON_PATH = "users.json"
+
+# ТВОЙ ID В ТЕЛЕГРАМ (ты его дал: 852405426)
+ADMIN_ID = 852405426
+
 
 # ===============================
 # IN-MEM STORAGE
@@ -866,6 +868,49 @@ async def cmd_fix(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ===============================
+# /dump_all — выслать anime.json и users.json (только админу)
+# ===============================
+async def cmd_dump_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    if not msg:
+        return
+
+    chat_id = update.effective_chat.id
+
+    if chat_id != ADMIN_ID:
+        await msg.reply_text("⛔ Эта команда только для админа.")
+        return
+
+    # Отправляем anime.json
+    if os.path.exists(ANIME_JSON_PATH):
+        try:
+            with open(ANIME_JSON_PATH, "rb") as f:
+                await msg.reply_document(
+                    document=f,
+                    filename="anime.json",
+                    caption="📁 Текущий anime.json",
+                )
+        except Exception as e:
+            await msg.reply_text(f"❌ Не удалось отправить anime.json: {e}")
+    else:
+        await msg.reply_text("⚠️ Файл anime.json не найден на диске.")
+
+    # Отправляем users.json
+    if os.path.exists(USERS_JSON_PATH):
+        try:
+            with open(USERS_JSON_PATH, "rb") as f:
+                await msg.reply_document(
+                    document=f,
+                    filename="users.json",
+                    caption="📁 Текущий users.json",
+                )
+        except Exception as e:
+            await msg.reply_text(f"❌ Не удалось отправить users.json: {e}")
+    else:
+        await msg.reply_text("⚠️ Файл users.json ещё не создан (никто не смотрел/не добавлял ничего).")
+
+
+# ===============================
 # /start
 # ===============================
 async def send_start_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -909,6 +954,9 @@ def main():
     load_anime()
     load_users()
 
+    if not BOT_TOKEN:
+        raise RuntimeError("Не задан BOT_TOKEN в переменных окружения")
+
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     # /start
@@ -916,6 +964,9 @@ def main():
 
     # /fix
     app.add_handler(CommandHandler("fix", cmd_fix))
+
+    # /dump_all
+    app.add_handler(CommandHandler("dump_all", cmd_dump_all))
 
     # callbacks (кнопки)
     app.add_handler(CallbackQueryHandler(handle_callback))
