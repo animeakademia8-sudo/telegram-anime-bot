@@ -28,20 +28,18 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
 WELCOME_PHOTO = "images/welcome.jpg"
 
-# Чат, из которого бот берёт аниме
 SOURCE_CHAT_ID = -1003362969236
 
 ANIME_JSON_PATH = "anime.json"
 USERS_JSON_PATH = "users.json"
 
-# ТВОЙ ID В ТЕЛЕГРАМ
 ADMIN_ID = 852405425
 
 
 # ===============================
 # IN-MEM STORAGE
 # ===============================
-LAST_MESSAGE: dict[int, int] = {}          # chat_id -> message_id (последнее "окно" бота)
+LAST_MESSAGE: dict[int, int] = {}          # chat_id -> message_id
 LAST_MESSAGE_TYPE: dict[int, str] = {}     # chat_id -> "photo" or "video"
 
 # режим поиска: chat_id -> set(user_id)
@@ -463,6 +461,7 @@ async def send_or_edit_photo(
                 reply_markup=reply_markup,
             )
     else:
+        print("WARNING: WELCOME_PHOTO not found, sending text only.")
         sent = await context.bot.send_message(
             chat_id=chat_id,
             text=caption,
@@ -551,6 +550,7 @@ async def edit_caption_only(
                     reply_markup=reply_markup,
                 )
         else:
+            print("WARNING: WELCOME_PHOTO not found, sending text only.")
             sent = await context.bot.send_message(
                 chat_id=chat_id,
                 text=caption,
@@ -568,7 +568,8 @@ async def show_main_menu(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     caption = "Приятного просмотра ✨\nВыбери опцию:"
     kb = build_main_menu_keyboard()
     await send_or_edit_photo(chat_id, context, WELCOME_PHOTO, caption, kb)
-    SEARCH_MODE[chat_id] = set()
+    # при входе в меню сбрасываем режим поиска для этого чата
+    SEARCH_MODE.pop(chat_id, None)
 
 
 async def show_genres(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
@@ -764,7 +765,9 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = (update.message.text or "").strip()
 
-    if user_id not in SEARCH_MODE.get(chat_id, set()):
+    # если этот пользователь не в режиме поиска в данном чате — игнорим
+    users_in_search = SEARCH_MODE.get(chat_id, set())
+    if user_id not in users_in_search:
         return
 
     q = text.lower()
@@ -779,7 +782,12 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         pass
 
-    SEARCH_MODE[chat_id].discard(user_id)
+    # аккуратно выходим из поиска
+    users_in_search.discard(user_id)
+    if not users_in_search:
+        SEARCH_MODE.pop(chat_id, None)
+    else:
+        SEARCH_MODE[chat_id] = users_in_search
 
     if not found_slug:
         await edit_caption_only(
@@ -930,6 +938,9 @@ def main():
 
     if not BOT_TOKEN:
         raise RuntimeError("Не задан BOT_TOKEN в переменных окружения")
+
+    if not os.path.exists(WELCOME_PHOTO):
+        print(f"WARNING: WELCOME_PHOTO '{WELCOME_PHOTO}' not found. Bot will send text-only messages instead of photo.")
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
