@@ -454,7 +454,6 @@ async def send_or_edit_photo(
                         message_id=msg_id,
                     )
             else:
-                # если картинки нет — просто меняем подпись
                 await context.bot.edit_message_caption(
                     chat_id=chat_id,
                     message_id=msg_id,
@@ -472,7 +471,6 @@ async def send_or_edit_photo(
             LAST_MESSAGE_TYPE[chat_id] = "photo"
             return msg_id
         except Exception:
-            # если не удалось отредактировать (старое или чужое сообщение) — пробуем удалить
             try:
                 await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
             except Exception:
@@ -487,7 +485,6 @@ async def send_or_edit_photo(
                 reply_markup=reply_markup,
             )
     else:
-        # fallback: без фото
         sent = await context.bot.send_message(
             chat_id=chat_id,
             text=caption,
@@ -727,8 +724,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "back":
-        # Кнопка "Назад" всегда пытается вернуть к текущей серии,
-        # а если прогресса нет — в главное меню
         prog = USER_PROGRESS.get(chat_id)
         if prog:
             slug = prog["slug"]
@@ -860,12 +855,6 @@ async def handle_source_chat_message(update: Update, context: ContextTypes.DEFAU
 # /fix — обновить серию по исправленной подписи
 # ===============================
 async def cmd_fix(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Использование:
-    1) Исправляешь подпись у сообщения с серией в SOURCE_CHAT_ID.
-    2) Пересылаешь ЭТО сообщение боту (или пишешь /fix в ответ на нужное сообщение, если бот в чате).
-    3) Бот берёт актуальную подпись и обновляет ANIME.
-    """
     msg = update.message
     if not msg:
         return
@@ -876,10 +865,8 @@ async def cmd_fix(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     target: Optional[Message] = None
 
-    # Если команда в ответ на сообщение
     if msg.reply_to_message:
         target = msg.reply_to_message
-    # Если переслано из канала/чата
     elif msg.forward_from_chat or msg.forward_from_message_id:
         target = msg
 
@@ -902,66 +889,91 @@ async def cmd_fix(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ===============================
-# /rebuild — массовый пересчёт по последним N сообщениям в SOURCE_CHAT_ID
+# /rebuild — массовый пересчёт по последним N сериям из апдейтов
 # ===============================
 async def cmd_rebuild(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     if not msg:
         return
 
-    user_id = update.effective_user.id
-    if user_id != ADMIN_ID:
+    if update.effective_user.id != ADMIN_ID:
         await msg.reply_text("⛔ Эта команда только для админа.")
         return
 
-    # сколько сообщений смотреть (по умолчанию 200)
+    # сколько подходящих сообщений с видео обработать (по умолчанию 200)
     try:
-        limit = int(context.args[0]) if context.args else 200
+        limit_needed = int(context.args[0]) if context.args else 200
     except (ValueError, IndexError):
-        limit = 200
+        limit_needed = 200
 
-    if limit <= 0:
-        limit = 50
+    if limit_needed <= 0:
+        limit_needed = 50
 
-    await msg.reply_text(f"🔁 Сканирую последние {limit} сообщений в SOURCE_CHAT_ID...")
+    await msg.reply_text(f"🔁 Пересчитываю до {limit_needed} видео-сообщений из SOURCE_CHAT_ID по апдейтам...")
 
     count_ok = 0
     count_fail = 0
     count_skipped = 0
 
     try:
-        chat = await context.bot.get_chat(SOURCE_CHAT_ID)
+        # Будем перебирать апдейты пачками
+        offset = None
+        batch_size = 100
 
-        async for m in chat.get_history(limit=limit):
-            if not m.video:
-                count_skipped += 1
-                continue
+        while count_ok < limit_needed:
+            updates = await context.bot.get_updates(offset=offset, limit=batch_size, timeout=0)
 
-            meta = parse_caption_to_meta(m.caption or "")
-            if not meta:
-                count_fail += 1
-                continue
+            if not updates:
+                break
 
-            slug = meta["slug"]
-            title = meta["title"]
-            ep = meta["ep"]
-            genres = meta["genres"]
-            file_id = m.video.file_id
+            for upd in updates:
+                offset = upd.update_id + 1
 
-            if slug not in ANIME:
-                ANIME[slug] = {
-                    "title": title,
-                    "genres": genres,
-                    "episodes": {},
-                }
-            else:
-                ANIME[slug]["title"] = title
-                if genres:
-                    ANIME[slug]["genres"] = genres
+                m: Optional[Message] = None
+                if upd.message:
+                    m = upd.message
+                elif upd.channel_post:
+                    m = upd.channel_post
+                else:
+                    continue
 
-            ANIME[slug].setdefault("episodes", {})
-            ANIME[slug]["episodes"][ep] = {"source": file_id}
-            count_ok += 1
+                if m.chat_id != SOURCE_CHAT_ID:
+                    continue
+                if not m.video:
+                    count_skipped += 1
+                    continue
+
+                meta = parse_caption_to_meta(m.caption or "")
+                if not meta:
+                    count_fail += 1
+                    continue
+
+                slug = meta["slug"]
+                title = meta["title"]
+                ep = meta["ep"]
+                genres = meta["genres"]
+                file_id = m.video.file_id
+
+                if slug not in ANIME:
+                    ANIME[slug] = {
+                        "title": title,
+                        "genres": genres,
+                        "episodes": {},
+                    }
+                else:
+                    ANIME[slug]["title"] = title
+                    if genres:
+                        ANIME[slug]["genres"] = genres
+
+                ANIME[slug].setdefault("episodes", {})
+                ANIME[slug]["episodes"][ep] = {"source": file_id}
+                count_ok += 1
+
+                if count_ok >= limit_needed:
+                    break
+
+            if len(updates) < batch_size:
+                break
 
         save_anime()
 
@@ -973,7 +985,7 @@ async def cmd_rebuild(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     except Exception as e:
-        await msg.reply_text(f"❌ Ошибка при чтении истории чата: {e}")
+        await msg.reply_text(f"❌ Ошибка при пересчёте: {e}")
 
 
 # ===============================
@@ -990,7 +1002,6 @@ async def cmd_dump_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text("⛔ Эта команда только для админа.")
         return
 
-    # Отправляем anime.json
     if os.path.exists(ANIME_JSON_PATH):
         try:
             with open(ANIME_JSON_PATH, "rb") as f:
@@ -1004,7 +1015,6 @@ async def cmd_dump_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await msg.reply_text("⚠️ Файл anime.json не найден на диске.")
 
-    # Отправляем users.json
     if os.path.exists(USERS_JSON_PATH):
         try:
             with open(USERS_JSON_PATH, "rb") as f:
@@ -1025,7 +1035,6 @@ async def cmd_dump_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def send_start_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
 
-    # Удаляем предыдущее "окно" бота, если оно у нас записано
     last_id = LAST_MESSAGE.get(chat_id)
     if last_id:
         try:
@@ -1037,7 +1046,6 @@ async def send_start_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     await show_main_menu(chat_id, context)
 
-    # Удаляем сообщение с /start
     try:
         if update.message:
             await update.message.delete()
@@ -1059,7 +1067,6 @@ async def debug_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # BOOT
 # ===============================
 def main():
-    # Загружаем существующие данные при старте
     load_anime()
     load_users()
 
@@ -1071,22 +1078,13 @@ def main():
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # /start
     app.add_handler(CommandHandler("start", send_start_message))
-
-    # /fix
     app.add_handler(CommandHandler("fix", cmd_fix))
-
-    # /rebuild
     app.add_handler(CommandHandler("rebuild", cmd_rebuild))
-
-    # /dump_all
     app.add_handler(CommandHandler("dump_all", cmd_dump_all))
 
-    # callbacks (кнопки)
     app.add_handler(CallbackQueryHandler(handle_callback))
 
-    # текст от пользователей (поиск)
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND & ~filters.Chat(SOURCE_CHAT_ID),
@@ -1094,7 +1092,6 @@ def main():
         )
     )
 
-    # сообщения из SOURCE_CHAT_ID (автодобавление аниме)
     app.add_handler(
         MessageHandler(
             filters.Chat(SOURCE_CHAT_ID) & filters.VIDEO,
@@ -1102,7 +1099,6 @@ def main():
         )
     )
 
-    # debug — если тебе нужно где-то достать file_id вручную
     app.add_handler(MessageHandler(filters.VIDEO & ~filters.Chat(SOURCE_CHAT_ID), debug_video))
 
     print("BOT STARTED...")
