@@ -930,7 +930,9 @@ async def cmd_rebuild(update: Update, context: ContextTypes.DEFAULT_TYPE):
     count_skipped = 0
 
     try:
-        async for m in context.bot.get_chat_history(chat_id=SOURCE_CHAT_ID, limit=limit):
+        chat = await context.bot.get_chat(SOURCE_CHAT_ID)
+
+        async for m in chat.get_history(limit=limit):
             if not m.video:
                 count_skipped += 1
                 continue
