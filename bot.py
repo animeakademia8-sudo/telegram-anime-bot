@@ -1,6 +1,7 @@
 import os
 import json
 import random
+import asyncio
 from typing import Optional
 
 from telegram import (
@@ -26,13 +27,11 @@ from telegram.ext import (
 BOT_TOKEN = os.environ.get("BOT_TOKEN") or "8421608017:AAGd5ikJ7bAU2OIpkCU8NI4Okbzi2Ed9upQ"
 WELCOME_PHOTO = "images/welcome.jpg"
 
-# Чат, из которого бот берет аниме
+# Чат, из которого бот берёт аниме
 SOURCE_CHAT_ID = -1003362969236  # твой чат с аниме
 
-# Базовая папка (где лежит этот файл)
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ANIME_JSON_PATH = os.path.join(BASE_DIR, "anime.json")
-USERS_JSON_PATH = os.path.join(BASE_DIR, "users.json")
+ANIME_JSON_PATH = "anime.json"
+USERS_JSON_PATH = "users.json"
 
 # ===============================
 # IN-MEM STORAGE
@@ -61,7 +60,6 @@ def load_anime() -> None:
     """Загружаем ANIME из anime.json, если файл существует."""
     global ANIME
     if not os.path.exists(ANIME_JSON_PATH):
-        print("anime.json not found, starting with empty ANIME")
         ANIME = {}
         return
     try:
@@ -102,7 +100,7 @@ def save_anime() -> None:
 
         with open(ANIME_JSON_PATH, "w", encoding="utf-8") as f:
             json.dump(data_to_save, f, ensure_ascii=False, indent=2)
-        print("ANIME saved to", ANIME_JSON_PATH)
+        print("Saved ANIME to anime.json")
     except Exception as e:
         print("Failed to save anime.json:", e)
 
@@ -114,7 +112,6 @@ def load_users() -> None:
     """Загружаем USER_PROGRESS, USER_FAVORITES, USER_WATCHED из users.json."""
     global USER_PROGRESS, USER_FAVORITES, USER_WATCHED
     if not os.path.exists(USERS_JSON_PATH):
-        print("users.json not found, starting with empty users")
         USER_PROGRESS = {}
         USER_FAVORITES = {}
         USER_WATCHED = {}
@@ -202,8 +199,7 @@ def save_users() -> None:
 
         with open(USERS_JSON_PATH, "w", encoding="utf-8") as f:
             json.dump(data_to_save, f, ensure_ascii=False, indent=2)
-
-        print("Users saved to", USERS_JSON_PATH)
+        print("Saved users to users.json")
 
     except Exception as e:
         print("Failed to save users.json:", e)
@@ -346,7 +342,7 @@ def build_anime_by_genre_keyboard(genre: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
-def build_episode_keyboard(slug: str, ep: int, chat_or_user_id: int) -> InlineKeyboardMarkup:
+def build_episode_keyboard(slug: str, ep: int, chat_id: int) -> InlineKeyboardMarkup:
     episodes = ANIME[slug]["episodes"]
     has_prev = (ep - 1) in episodes
     has_next = (ep + 1) in episodes
@@ -357,13 +353,13 @@ def build_episode_keyboard(slug: str, ep: int, chat_or_user_id: int) -> InlineKe
     if has_next:
         nav.append(InlineKeyboardButton("Следующая ▶️", callback_data=f"next:{slug}:{ep}"))
 
-    fav_set = USER_FAVORITES.get(chat_or_user_id, set())
+    fav_set = USER_FAVORITES.get(chat_id, set())
     if slug in fav_set:
         fav_button = InlineKeyboardButton("💔 Убрать из избранного", callback_data=f"fav_remove:{slug}")
     else:
         fav_button = InlineKeyboardButton("💖 В избранное", callback_data=f"fav_add:{slug}")
 
-    watched_set = USER_WATCHED.get(chat_or_user_id, set())
+    watched_set = USER_WATCHED.get(chat_id, set())
     if (slug, ep) in watched_set:
         watched_button = InlineKeyboardButton("👁 Убрать из просмотренного", callback_data=f"unwatch:{slug}:{ep}")
     else:
@@ -399,7 +395,7 @@ def build_episode_list_keyboard(slug: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-def build_anime_menu(chat_or_user_id: int) -> InlineKeyboardMarkup:
+def build_anime_menu(chat_id: int) -> InlineKeyboardMarkup:
     keyboard = []
     for slug, anime in ANIME.items():
         keyboard.append([InlineKeyboardButton(anime["title"], callback_data=f"anime:{slug}")])
@@ -409,8 +405,8 @@ def build_anime_menu(chat_or_user_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
-def build_favorites_keyboard(chat_or_user_id: int) -> InlineKeyboardMarkup:
-    favs = USER_FAVORITES.get(chat_or_user_id, set())
+def build_favorites_keyboard(chat_id: int) -> InlineKeyboardMarkup:
+    favs = USER_FAVORITES.get(chat_id, set())
     rows = []
     for slug in favs:
         title = ANIME.get(slug, {}).get("title", slug)
@@ -421,8 +417,8 @@ def build_favorites_keyboard(chat_or_user_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-def build_watched_keyboard(chat_or_user_id: int) -> InlineKeyboardMarkup:
-    watched = USER_WATCHED.get(chat_or_user_id, set())
+def build_watched_keyboard(chat_id: int) -> InlineKeyboardMarkup:
+    watched = USER_WATCHED.get(chat_id, set())
     rows = []
     for slug, ep in sorted(watched):
         title = ANIME.get(slug, {}).get("title", slug)
@@ -601,10 +597,7 @@ async def show_episode(chat_id: int, context: ContextTypes.DEFAULT_TYPE, slug: s
     caption = f"{anime['title']}\nСерия {ep}"
     kb = build_episode_keyboard(slug, ep, chat_id)
     await send_or_edit_video(chat_id, context, episode["source"], caption, kb)
-
-    # сохраняем прогресс по user_id
-    user_id = chat_id  # если бот в личке; если в группе — можно поменять на update.effective_user.id
-    USER_PROGRESS[user_id] = {"slug": slug, "ep": ep}
+    USER_PROGRESS[chat_id] = {"slug": slug, "ep": ep}
     save_users()
     SEARCH_MODE[chat_id] = False
 
@@ -651,8 +644,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     chat_id = query.message.chat_id
 
-    user_id = query.from_user.id  # для прогресса/избранного/просмотренного
-
     if data == "menu":
         await show_main_menu(chat_id, context)
         return
@@ -666,7 +657,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "continue":
-        prog = USER_PROGRESS.get(user_id)
+        prog = USER_PROGRESS.get(chat_id)
         if not prog:
             await query.answer("Ты ещё ничего не смотрел", show_alert=True)
             await show_main_menu(chat_id, context)
@@ -681,11 +672,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "favorites":
-        await show_favorites(user_id, context)
+        await show_favorites(chat_id, context)
         return
 
     if data == "watched":
-        await show_watched(user_id, context)
+        await show_watched(chat_id, context)
         return
 
     if data.startswith("genre:"):
@@ -699,7 +690,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "back":
-        prog = USER_PROGRESS.get(user_id)
+        prog = USER_PROGRESS.get(chat_id)
         if prog:
             slug = prog["slug"]
             ep = prog["ep"]
@@ -733,9 +724,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data.startswith("fav_add:"):
         slug = data.split(":", 1)[1]
-        USER_FAVORITES.setdefault(user_id, set()).add(slug)
+        USER_FAVORITES.setdefault(chat_id, set()).add(slug)
         save_users()
-        prog = USER_PROGRESS.get(user_id)
+        prog = USER_PROGRESS.get(chat_id)
         ep = 1
         if prog and prog.get("slug") == slug:
             ep = prog.get("ep", 1)
@@ -744,9 +735,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data.startswith("fav_remove:"):
         slug = data.split(":", 1)[1]
-        USER_FAVORITES.setdefault(user_id, set()).discard(slug)
+        USER_FAVORITES.setdefault(chat_id, set()).discard(slug)
         save_users()
-        prog = USER_PROGRESS.get(user_id)
+        prog = USER_PROGRESS.get(chat_id)
         ep = 1
         if prog and prog.get("slug") == slug:
             ep = prog.get("ep", 1)
@@ -756,7 +747,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("watch:"):
         _, slug, ep_str = data.split(":")
         ep = int(ep_str)
-        USER_WATCHED.setdefault(user_id, set()).add((slug, ep))
+        USER_WATCHED.setdefault(chat_id, set()).add((slug, ep))
         save_users()
         await show_episode(chat_id, context, slug, ep)
         return
@@ -764,7 +755,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("unwatch:"):
         _, slug, ep_str = data.split(":")
         ep = int(ep_str)
-        USER_WATCHED.setdefault(user_id, set()).discard((slug, ep))
+        USER_WATCHED.setdefault(chat_id, set()).discard((slug, ep))
         save_users()
         await show_episode(chat_id, context, slug, ep)
         return
@@ -823,8 +814,8 @@ async def handle_source_chat_message(update: Update, context: ContextTypes.DEFAU
     if not msg.video:
         return
 
-    res = add_or_update_anime_from_message(msg)
-    print("SOURCE_CHAT update:", res)
+    result = add_or_update_anime_from_message(msg)
+    print(result)
 
 
 # ===============================
@@ -903,9 +894,9 @@ async def debug_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ===============================
-# BOOT
+# BOOT (ASYNC)
 # ===============================
-def main():
+async def main():
     # Загружаем существующие данные при старте
     load_anime()
     load_users()
@@ -941,8 +932,17 @@ def main():
     app.add_handler(MessageHandler(filters.VIDEO & ~filters.Chat(SOURCE_CHAT_ID), debug_video))
 
     print("BOT STARTED...")
-    app.run_polling()
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+
+    try:
+        await asyncio.Event().wait()
+    finally:
+        await app.updater.stop()
+        await app.stop()
+        await app.shutdown()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
