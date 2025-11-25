@@ -23,7 +23,12 @@ from telegram.ext import (
 # ===============================
 # CONFIG
 # ===============================
-BOT_TOKEN = os.environ.get("BOT_TOKEN") or "8421608017:AAGd5ikJ7bAU2OIpkCU8NI4Okbzi2Ed9upQ"
+
+# Токен берём только из переменной окружения BOT_TOKEN
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise RuntimeError("BOT_TOKEN environment variable is not set")
+
 WELCOME_PHOTO = "images/welcome.jpg"
 
 # Чат, из которого бот берёт аниме
