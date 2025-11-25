@@ -12,5 +12,31 @@
         "source": "BAACAgIAAxkBAAIC3GkkOM-7t-w06khdsdltYWevP4uGAALAigACC2whSaYsDQuBaW6oNgQ"
       }
     }
+  },
+  "ga4iakyta": {
+    "title": "Гачиакута",
+    "genres": [
+      "сёнэн",
+      "приключения",
+      "фэнтези",
+      "экшен",
+      "суперспособности",
+      "антиутопия",
+      "постапокалиптика"
+    ],
+    "episodes": {
+      "1": {
+        "source": "BAACAgIAAxkDAAICuGkjWJupyvNj3K1EqJBtc15tTGajAAIqiAAC0E_RSDiNDuk9slE9NgQ"
+      },
+      "2": {
+        "source": "BAACAgIAAxkDAAICvGkjWKgiCvms1N-SL-bqYPErFktPAAIviAAC0E_RSPxJtnNeXZtINgQ"
+      },
+      "3": {
+        "source": "BAACAgIAAxkDAAICw2kkLhDpeXEAAZ5de0reD6VupdpTjAACOogAAtBP0Uhyh4xsysykzDYE"
+      },
+      "4": {
+        "source": "BAACAgIAAxkDAAICw2kkLhEVpJfenxp3vxnA3rfppnSKAAJWiAAC0E_RSOdsxn-Wg4sUNgQ"
+      }
+    }
   }
 }
