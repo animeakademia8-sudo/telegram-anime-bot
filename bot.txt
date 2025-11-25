@@ -43,7 +43,6 @@ LAST_MESSAGE: dict[int, int] = {}
 LAST_MESSAGE_TYPE: dict[int, str] = {}
 SEARCH_MODE: dict[int, bool] = {}
 
-# !!! ВАЖНО !!!
 # user_id -> {slug: ep}
 USER_PROGRESS: dict[int, dict[str, int]] = {}
 
@@ -408,6 +407,11 @@ def build_watched_keyboard(chat_id: int) -> InlineKeyboardMarkup:
 
 
 def build_continue_keyboard(chat_id: int) -> InlineKeyboardMarkup:
+    """
+    Для каждого тайтла делаем две строки:
+    1) ▶ Название — с N серии  (открывает эп)
+    2) ✖ Убрать из продолжения (только удаляет из USER_PROGRESS)
+    """
     user_prog = USER_PROGRESS.get(chat_id, {})
     rows = []
 
@@ -416,18 +420,21 @@ def build_continue_keyboard(chat_id: int) -> InlineKeyboardMarkup:
         rows.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
         return InlineKeyboardMarkup(rows)
 
-    # каждая строка: [ "Название — продолжить с N" ] [ 🗑 ]
     for slug, ep in user_prog.items():
         title = ANIME.get(slug, {}).get("title", slug)
+        # строка продолжения
         rows.append([
             InlineKeyboardButton(
-                f"{title} — продолжить с {ep} серии",
+                f"▶ {title} — с {ep} серии",
                 callback_data=f"cont:{slug}",
-            ),
+            )
+        ])
+        # строка удаления
+        rows.append([
             InlineKeyboardButton(
-                "🗑",
+                f"✖ Убрать «{title}» из продолжения",
                 callback_data=f"cont_remove:{slug}",
-            ),
+            )
         ])
 
     rows.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
@@ -603,7 +610,6 @@ async def show_episode(chat_id: int, context: ContextTypes.DEFAULT_TYPE, slug: s
     kb = build_episode_keyboard(slug, ep, chat_id)
     await send_or_edit_video(chat_id, context, episode["source"], caption, kb)
 
-    # записываем прогресс
     USER_PROGRESS.setdefault(chat_id, {})
     USER_PROGRESS[chat_id][slug] = ep
     save_users()
@@ -678,17 +684,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await show_main_menu(chat_id, context)
             return
 
-        # если только один тайтл в прогрессе — сразу открываем его
         if len(user_prog) == 1:
             slug, ep = next(iter(user_prog.items()))
             await show_episode(chat_id, context, slug, ep)
             return
 
-        # если несколько — показываем список
         await show_continue_menu(chat_id, context)
         return
 
-    # продолжить конкретный тайтл из списка "Продолжить"
     if data.startswith("cont:"):
         _, slug = data.split(":", 1)
         ep = USER_PROGRESS.get(chat_id, {}).get(slug)
@@ -699,7 +702,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_episode(chat_id, context, slug, ep)
         return
 
-    # убрать тайтл из "Продолжить"
     if data.startswith("cont_remove:"):
         _, slug = data.split(":", 1)
         if chat_id in USER_PROGRESS:
