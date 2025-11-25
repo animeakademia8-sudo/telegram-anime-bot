@@ -1,7 +1,6 @@
 import os
 import json
 import random
-import asyncio
 from typing import Optional
 
 from telegram import (
@@ -29,27 +28,31 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
 WELCOME_PHOTO = "images/welcome.jpg"
 
-# Чат, из которого бот берёт аниме
-SOURCE_CHAT_ID = -1003362969236  # если другой — поменяй
+SOURCE_CHAT_ID = -1003362969236  # чат/канал с аниме
 
 ANIME_JSON_PATH = "anime.json"
 USERS_JSON_PATH = "users.json"
 
-# Твой ID
 ADMIN_ID = 852405425
 
 
 # ===============================
 # IN-MEM STORAGE
 # ===============================
-LAST_MESSAGE: dict[int, int] = {}
-LAST_MESSAGE_TYPE: dict[int, str] = {}
-SEARCH_MODE: dict[int, bool] = {}
+LAST_MESSAGE: dict[int, int] = {}          # chat_id -> message_id
+LAST_MESSAGE_TYPE: dict[int, str] = {}     # chat_id -> "photo" or "video"
+SEARCH_MODE: dict[int, bool] = {}          # chat_id -> bool
 
-USER_PROGRESS: dict[int, dict] = {}
+# user_id -> {slug: ep}
+USER_PROGRESS: dict[int, dict[str, int]] = {}
+
+# user_id -> set(slug)
 USER_FAVORITES: dict[int, set] = {}
+
+# user_id -> set((slug, ep))
 USER_WATCHED: dict[int, set] = {}
 
+# slug -> {title, genres, episodes{ep: {source}}}
 ANIME: dict[str, dict] = {}
 
 
@@ -105,6 +108,11 @@ def save_anime() -> None:
 # JSON SAVE/LOAD: USERS
 # ===============================
 def load_users() -> None:
+    """
+    Загружаем USER_PROGRESS, USER_FAVORITES, USER_WATCHED из users.json.
+    Поддерживаем старый формат прогресса: {"slug":..., "ep":...}
+    и новый: {slug: ep, ...}
+    """
     global USER_PROGRESS, USER_FAVORITES, USER_WATCHED
     if not os.path.exists(USERS_JSON_PATH):
         USER_PROGRESS = {}
@@ -116,17 +124,31 @@ def load_users() -> None:
         with open(USERS_JSON_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
 
+        # progress: user_id -> {slug: ep}
         USER_PROGRESS = {}
         for user_id_str, prog in data.get("progress", {}).items():
             try:
                 user_id = int(user_id_str)
             except ValueError:
                 continue
-            slug = prog.get("slug")
-            ep = prog.get("ep")
-            if slug and isinstance(ep, int):
-                USER_PROGRESS[user_id] = {"slug": slug, "ep": ep}
 
+            # старый формат: {"slug":..., "ep":...}
+            if isinstance(prog, dict) and "slug" in prog and "ep" in prog:
+                slug = prog.get("slug")
+                ep = prog.get("ep")
+                if isinstance(slug, str) and isinstance(ep, int):
+                    USER_PROGRESS[user_id] = {slug: ep}
+                continue
+
+            # новый формат: {slug: ep}
+            if isinstance(prog, dict):
+                per_user: dict[str, int] = {}
+                for slug, ep in prog.items():
+                    if isinstance(slug, str) and isinstance(ep, int):
+                        per_user[slug] = ep
+                USER_PROGRESS[user_id] = per_user
+
+        # favorites: user_id -> [slug, ...]
         USER_FAVORITES = {}
         for user_id_str, fav_list in data.get("favorites", {}).items():
             try:
@@ -138,6 +160,7 @@ def load_users() -> None:
             else:
                 USER_FAVORITES[user_id] = set()
 
+        # watched: user_id -> [[slug, ep], ...]
         USER_WATCHED = {}
         for user_id_str, watched_list in data.get("watched", {}).items():
             try:
@@ -163,6 +186,7 @@ def load_users() -> None:
 
 
 def save_users() -> None:
+    """Сохраняем USER_PROGRESS, USER_FAVORITES, USER_WATCHED в users.json."""
     try:
         data_to_save = {
             "progress": {},
@@ -170,15 +194,15 @@ def save_users() -> None:
             "watched": {},
         }
 
+        # progress: user_id -> {slug: ep}
         for user_id, prog in USER_PROGRESS.items():
-            data_to_save["progress"][str(user_id)] = {
-                "slug": prog.get("slug"),
-                "ep": prog.get("ep"),
-            }
+            data_to_save["progress"][str(user_id)] = prog
 
+        # favorites: user_id -> [slug, ...]
         for user_id, fav_set in USER_FAVORITES.items():
             data_to_save["favorites"][str(user_id)] = list(fav_set)
 
+        # watched: user_id -> [[slug, ep], ...]
         for user_id, watched_set in USER_WATCHED.items():
             pairs = []
             for slug, ep in watched_set:
@@ -196,6 +220,13 @@ def save_users() -> None:
 # UTILS: парсер подписи
 # ===============================
 def parse_caption_to_meta(caption: str) -> Optional[dict]:
+    """
+    Ожидаем формат:
+    slug: ga4iakyta
+    title: Гачиакута
+    ep: 1
+    genres: приключения, фэнтези, экшен
+    """
     if not caption:
         return None
 
@@ -401,6 +432,28 @@ def build_watched_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
+def build_continue_keyboard(chat_id: int) -> InlineKeyboardMarkup:
+    """
+    Кнопки "продолжить" по всем тайтлам, где есть прогресс.
+    """
+    prog = USER_PROGRESS.get(chat_id, {})
+    rows = []
+    for slug, ep in prog.items():
+        title = ANIME.get(slug, {}).get("title", slug)
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    f"{title} — продолжить с {ep} серии",
+                    callback_data=f"cont:{slug}",
+                )
+            ]
+        )
+    if not rows:
+        rows = [[InlineKeyboardButton("Пока нечего продолжать", callback_data="menu")]]
+    rows.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
+    return InlineKeyboardMarkup(rows)
+
+
 # ===============================
 # HELPERS: single-message logic
 # ===============================
@@ -569,7 +622,10 @@ async def show_episode(chat_id: int, context: ContextTypes.DEFAULT_TYPE, slug: s
     caption = f"{anime['title']}\nСерия {ep}"
     kb = build_episode_keyboard(slug, ep, chat_id)
     await send_or_edit_video(chat_id, context, episode["source"], caption, kb)
-    USER_PROGRESS[chat_id] = {"slug": slug, "ep": ep}
+
+    # Запоминаем прогресс по этому тайтлу
+    USER_PROGRESS.setdefault(chat_id, {})
+    USER_PROGRESS[chat_id][slug] = ep
     save_users()
     SEARCH_MODE[chat_id] = False
 
@@ -607,6 +663,28 @@ async def show_watched(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     SEARCH_MODE[chat_id] = False
 
 
+async def show_continue_list(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
+    prog = USER_PROGRESS.get(chat_id, {})
+    if not prog:
+        await edit_caption_only(
+            chat_id,
+            context,
+            "Ты ещё ничего не смотрел, продолжать нечего 🙂",
+            build_main_menu_keyboard(chat_id),
+        )
+        return
+
+    # если только один тайтл — сразу в него
+    if len(prog) == 1:
+        slug, ep = next(iter(prog.items()))
+        await show_episode(chat_id, context, slug, ep)
+        return
+
+    caption = "Выбери, что продолжить:"
+    kb = build_continue_keyboard(chat_id)
+    await edit_caption_only(chat_id, context, caption, kb)
+
+
 # ===============================
 # CALLBACKS
 # ===============================
@@ -629,12 +707,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "continue":
-        prog = USER_PROGRESS.get(chat_id)
-        if not prog:
-            await query.answer("Ты ещё ничего не смотрел", show_alert=True)
-            await show_main_menu(chat_id, context)
-            return
-        await show_episode(chat_id, context, prog["slug"], prog["ep"])
+        await show_continue_list(chat_id, context)
         return
 
     if data == "search":
@@ -688,10 +761,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         slug = data.split(":", 1)[1]
         USER_FAVORITES.setdefault(chat_id, set()).add(slug)
         save_users()
-        prog = USER_PROGRESS.get(chat_id)
-        ep = 1
-        if prog and prog.get("slug") == slug:
-            ep = prog.get("ep", 1)
+        # возвращаемся к текущей позиции пользователя в этом тайтле, если есть
+        ep = USER_PROGRESS.get(chat_id, {}).get(slug, 1)
         await show_episode(chat_id, context, slug, ep)
         return
 
@@ -699,10 +770,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         slug = data.split(":", 1)[1]
         USER_FAVORITES.setdefault(chat_id, set()).discard(slug)
         save_users()
-        prog = USER_PROGRESS.get(chat_id)
-        ep = 1
-        if prog and prog.get("slug") == slug:
-            ep = prog.get("ep", 1)
+        ep = USER_PROGRESS.get(chat_id, {}).get(slug, 1)
         await show_episode(chat_id, context, slug, ep)
         return
 
@@ -719,6 +787,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ep = int(ep_str)
         USER_WATCHED.setdefault(chat_id, set()).discard((slug, ep))
         save_users()
+        await show_episode(chat_id, context, slug, ep)
+        return
+
+    if data.startswith("cont:"):
+        _, slug = data.split(":")
+        ep = USER_PROGRESS.get(chat_id, {}).get(slug)
+        if not ep:
+            ep = 1
         await show_episode(chat_id, context, slug, ep)
         return
 
@@ -777,9 +853,13 @@ async def handle_source_chat_message(update: Update, context: ContextTypes.DEFAU
 
 
 # ===============================
-# /fix — обновить одну серию
+# /fix
 # ===============================
 async def cmd_fix(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /fix в ответ на сообщению с серией
+    или на пересланное сообщение из SOURCE_CHAT_ID.
+    """
     msg = update.message
     if not msg:
         return
@@ -807,55 +887,6 @@ async def cmd_fix(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     result = add_or_update_anime_from_message(target)
     await msg.reply_text(result or "✅ Обновлено.")
-
-
-# ===============================
-# /fix_all — массовый пересчёт
-# ===============================
-async def cmd_fix_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Массово пройтись по последним N сообщениям в SOURCE_CHAT_ID
-    и обновить базу аниме по их подписям.
-    """
-    msg = update.message
-    if not msg:
-        return
-
-    chat_id = update.effective_chat.id
-    if chat_id != ADMIN_ID:
-        await msg.reply_text("⛔ Команда только для админа.")
-        return
-
-    limit = 200  # последние 200 сообщений
-    updated = 0
-    processed = 0
-
-    try:
-        # Получаем историю чата
-        history = []
-        async for m in context.bot.get_chat_history(chat_id=SOURCE_CHAT_ID, limit=limit):
-            history.append(m)
-
-        # Перебираем СТАРЫЕ → НОВЫЕ (reverse)
-        for m in reversed(history):
-            processed += 1
-            if not m.video:
-                continue
-
-            res = add_or_update_anime_from_message(m)
-            if res and res.startswith("✅"):
-                updated += 1
-
-            # Чуть-чуть отпускаем цикл, чтобы не лочить ивентлуп
-            await asyncio.sleep(0.05)
-
-        await msg.reply_text(
-            f"✅ Массовый пересчёт завершён.\n"
-            f"Обработано сообщений: {processed}\n"
-            f"Обновлено серий: {updated}"
-        )
-    except Exception as e:
-        await msg.reply_text(f"❌ Ошибка при пересчёте: {e}")
 
 
 # ===============================
@@ -947,7 +978,6 @@ def main():
 
     app.add_handler(CommandHandler("start", send_start_message))
     app.add_handler(CommandHandler("fix", cmd_fix))
-    app.add_handler(CommandHandler("fix_all", cmd_fix_all))
     app.add_handler(CommandHandler("dump_all", cmd_dump_all))
 
     app.add_handler(CallbackQueryHandler(handle_callback))
