@@ -420,7 +420,9 @@ def build_continue_keyboard(chat_id: int) -> InlineKeyboardMarkup:
         rows.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
         return InlineKeyboardMarkup(rows)
 
-    for slug, ep in user_prog.items():
+    # просто аккуратно идём по slug'ам (не меняя структуру данных)
+    for slug in sorted(user_prog.keys()):
+        ep = user_prog[slug]
         title = ANIME.get(slug, {}).get("title", slug)
         rows.append([
             InlineKeyboardButton(
@@ -463,6 +465,27 @@ def build_continue_item_keyboard(chat_id: int, slug: str) -> InlineKeyboardMarku
     ])
 
     return InlineKeyboardMarkup(rows)
+
+
+def build_search_results_keyboard(matches: list[tuple[str, str]]) -> InlineKeyboardMarkup:
+    """
+    matches: list of (slug, title)
+    """
+    rows = [
+        [InlineKeyboardButton(title, callback_data=f"anime:{slug}")]
+        for slug, title in matches
+    ]
+    rows.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
+    return InlineKeyboardMarkup(rows)
+
+
+def build_search_keyboard() -> InlineKeyboardMarkup:
+    """
+    Клавиатура для режима поиска: минимализм, только возврат в меню.
+    """
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🍄 Меню", callback_data="menu")]
+    ])
 
 
 # ===============================
@@ -593,7 +616,12 @@ async def edit_caption_only(
 # SCREENS
 # ===============================
 async def show_main_menu(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
-    caption = "Приятного просмотра ✨\nВсе управление через кнопки ниже."
+    caption = (
+        "Приятного просмотра ✨\n"
+        "Все управление через кнопки ниже.\n\n"
+        "🔍 Чтобы найти аниме — нажми «Поиск» и напиши его название.\n"
+        "💬 Я удаляю текстовые сообщения и реагирую только на кнопки — так в чате меньше мусора."
+    )
     kb = build_main_menu_keyboard(chat_id)
     await send_or_edit_photo(chat_id, context, WELCOME_PHOTO, caption, kb)
     SEARCH_MODE[chat_id] = False
@@ -623,11 +651,29 @@ async def show_anime_by_genre(chat_id: int, context: ContextTypes.DEFAULT_TYPE, 
 async def show_episode(chat_id: int, context: ContextTypes.DEFAULT_TYPE, slug: str, ep: int):
     anime = ANIME.get(slug)
     if not anime:
-        await edit_caption_only(chat_id, context, "Аниме не найдено", build_main_menu_keyboard(chat_id))
+        # пункт 5: чистим прогресс, если тайтл пропал
+        if chat_id in USER_PROGRESS and slug in USER_PROGRESS[chat_id]:
+            del USER_PROGRESS[chat_id][slug]
+            if not USER_PROGRESS[chat_id]:
+                del USER_PROGRESS[chat_id]
+            save_users()
+
+        await edit_caption_only(
+            chat_id,
+            context,
+            "Аниме не найдено. Возможно, оно было удалено или переименовано.",
+            build_main_menu_keyboard(chat_id),
+        )
         return
+
     episode = anime["episodes"].get(ep)
     if not episode:
-        await edit_caption_only(chat_id, context, "Такой серии нет", build_main_menu_keyboard(chat_id))
+        await edit_caption_only(
+            chat_id,
+            context,
+            "Такой серии нет. Возможно, она была удалена.",
+            build_main_menu_keyboard(chat_id),
+        )
         return
 
     caption = f"{anime['title']}\nСерия {ep}"
@@ -667,7 +713,10 @@ async def show_favorites(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def show_watched_titles(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
-    caption = "Просмотренные тайтлы:"
+    caption = (
+        "Просмотренные тайтлы:\n"
+        "Здесь появляются тайтлы, которые ты отметил как полностью просмотренные 👁"
+    )
     kb = build_watched_titles_keyboard(chat_id)
     await edit_caption_only(chat_id, context, caption, kb)
     SEARCH_MODE[chat_id] = False
@@ -739,8 +788,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "search":
         SEARCH_MODE[chat_id] = True
-        caption = "🔍 Введи название аниме сообщением (или его часть).\n(Текст потом удалю, реагирую только на кнопки)"
-        await edit_caption_only(chat_id, context, caption, build_main_menu_keyboard(chat_id))
+        caption = (
+            "🔍 Введи название аниме сообщением (или его часть).\n"
+            "(Текст потом удалю, реагирую только на кнопки)"
+        )
+        await edit_caption_only(chat_id, context, caption, build_search_keyboard())
         return
 
     if data == "favorites":
@@ -788,6 +840,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         slug = data.split(":", 1)[1]
         USER_FAVORITES.setdefault(chat_id, set()).add(slug)
         save_users()
+        await query.answer("Добавлено в избранное.")
         ep = USER_PROGRESS.get(chat_id, {}).get(slug, 1)
         await show_episode(chat_id, context, slug, ep)
         return
@@ -796,6 +849,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         slug = data.split(":", 1)[1]
         USER_FAVORITES.setdefault(chat_id, set()).discard(slug)
         save_users()
+        await query.answer("Убрано из избранного.")
         ep = USER_PROGRESS.get(chat_id, {}).get(slug, 1)
         await show_episode(chat_id, context, slug, ep)
         return
@@ -804,6 +858,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         slug = data.split(":", 1)[1]
         USER_WATCHED_TITLES.setdefault(chat_id, set()).add(slug)
         save_users()
+        await query.answer("Тайтл отмечен как просмотренный.")
         ep = USER_PROGRESS.get(chat_id, {}).get(slug, 1)
         await show_episode(chat_id, context, slug, ep)
         return
@@ -812,6 +867,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         slug = data.split(":", 1)[1]
         USER_WATCHED_TITLES.setdefault(chat_id, set()).discard(slug)
         save_users()
+        await query.answer("С тайтла снята отметка просмотренного.")
         ep = USER_PROGRESS.get(chat_id, {}).get(slug, 1)
         await show_episode(chat_id, context, slug, ep)
         return
@@ -835,11 +891,12 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     q = text.lower()
-    found_slug = None
+    matches: list[tuple[str, str]] = []
+
     for slug, anime in ANIME.items():
-        if q in anime["title"].lower():
-            found_slug = slug
-            break
+        title = anime.get("title", "")
+        if q in title.lower():
+            matches.append((slug, title))
 
     # Удаляем сообщение с текстом поиска
     try:
@@ -847,7 +904,7 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         pass
 
-    if not found_slug:
+    if not matches:
         await edit_caption_only(
             chat_id,
             context,
@@ -857,7 +914,20 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         SEARCH_MODE[chat_id] = False
         return
 
-    await show_episode(chat_id, context, found_slug, 1)
+    if len(matches) == 1:
+        slug = matches[0][0]
+        await show_episode(chat_id, context, slug, 1)
+        SEARCH_MODE[chat_id] = False
+        return
+
+    # Если найдено несколько тайтлов — показывает список
+    kb = build_search_results_keyboard(matches)
+    await edit_caption_only(
+        chat_id,
+        context,
+        "Нашёл несколько тайтлов, выбери нужный:",
+        kb,
+    )
     SEARCH_MODE[chat_id] = False
 
 
@@ -929,7 +999,7 @@ async def cmd_fix(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif target.chat:
         from_chat_id = target.chat.id
 
-    if from_chat_id != SOURCE_CHAT_ID:
+    if from_chat_id != SOURCE_CHAT_ID and msg.from_user.id != ADMIN_ID:
         await msg.reply_text("❌ Это сообщение не из SOURCE_CHAT_ID. Перешли боту серию из нужного чата.")
         return
 
@@ -1063,3 +1133,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

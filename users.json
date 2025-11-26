@@ -1,30 +1,51 @@
 {
   "progress": {
     "852405425": {
-      "ep": 1,
       "pridvornii": 1,
-      "ga4iakyta": 7
+      "ga4iakyta": 17
     },
     "710610332": {
-      "ga4iakyta": 4,
+      "ga4iakyta": 2,
+      "pridvornii": 1
+    },
+    "1983768215": {
+      "ga4iakyta": 1
+    },
+    "1469083491": {
+      "pridvornii": 1,
+      "ga4iakyta": 2
+    },
+    "1597662632": {
+      "ga4iakyta": 1
+    },
+    "6650200661": {
+      "pridvornii": 1
+    },
+    "5862435405": {
+      "ga4iakyta": 1,
       "pridvornii": 1
     }
   },
   "favorites": {
     "852405425": [
-      "pridvornii"
+      "pridvornii",
+      "ga4iakyta"
+    ],
+    "710610332": [
+      "ga4iakyta"
+    ],
+    "5862435405": [
+      "pridvornii",
+      "ga4iakyta"
     ]
   },
-  "watched": {
+  "watched_titles": {
+    "710610332": [
+      "ga4iakyta"
+    ],
     "852405425": [
-      [
-        "pridvornii",
-        1
-      ],
-      [
-        "ga4iakyta",
-        7
-      ]
-    ]
+      "ga4iakyta"
+    ],
+    "1983768215": []
   }
 }
