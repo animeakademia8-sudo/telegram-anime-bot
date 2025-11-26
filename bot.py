@@ -962,13 +962,48 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("next:"):
         _, slug, ep_str = data.split(":")
         current = int(ep_str)
-        await show_episode(chat_id, context, slug, current + 1)
+
+        # --- НОВАЯ ЛОГИКА ДЛЯ ОЗУЧКИ ПРИ ПЕРЕХОДЕ ВПЕРЁД ---
+        next_ep = current + 1
+        anime = ANIME.get(slug)
+        if not anime or next_ep not in anime.get("episodes", {}):
+            await show_episode(chat_id, context, slug, next_ep)
+            return
+
+        # Текущая выбранная озвучка для тайтла
+        current_track = get_user_track(chat_id, slug)
+        if current_track:
+            next_ep_obj = anime["episodes"][next_ep]
+            next_tracks = next_ep_obj.get("tracks", {})
+            if current_track not in next_tracks:
+                # в следующей серии нет этой озвучки — НИЧЕГО НЕ ДЕЛАЕМ
+                await query.answer("Для следующей серии нет дорожки в этой озвучке.", show_alert=True)
+                return
+
+        # если озвучка есть или ни одной не выбрано — обычный переход
+        await show_episode(chat_id, context, slug, next_ep, track_name=current_track)
         return
 
     if data.startswith("prev:"):
         _, slug, ep_str = data.split(":")
         current = int(ep_str)
-        await show_episode(chat_id, context, slug, current - 1)
+
+        # --- НОВАЯ ЛОГИКА ПРИ ПЕРЕХОДЕ НАЗАД ---
+        prev_ep = current - 1
+        anime = ANIME.get(slug)
+        if not anime or prev_ep not in anime.get("episodes", {}):
+            await show_episode(chat_id, context, slug, prev_ep)
+            return
+
+        current_track = get_user_track(chat_id, slug)
+        if current_track:
+            prev_ep_obj = anime["episodes"][prev_ep]
+            prev_tracks = prev_ep_obj.get("tracks", {})
+            if current_track not in prev_tracks:
+                await query.answer("Для этой серии нет дорожки в выбранной озвучке.", show_alert=True)
+                return
+
+        await show_episode(chat_id, context, slug, prev_ep, track_name=current_track)
         return
 
     if data.startswith("fav_add:"):
