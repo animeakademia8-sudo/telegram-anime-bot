@@ -798,7 +798,7 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         SEARCH_MODE[chat_id] = False
         return
     kb = build_search_results_keyboard(matches)
-    await edit_caption_only(chat_id, context, "Нашёл несколько тайтлов, выбери нужный:", kb)
+    await edit_caption_only(chat_id, context, "Нашёл несколько тайтлв, выбери нужный:", kb)
     SEARCH_MODE[chat_id] = False
 
 # ===============================
