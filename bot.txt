@@ -50,6 +50,9 @@ USER_FAVORITES: dict[int, set[str]] = {}
 # user_id -> set(slug)  # ТАЙТЛЫ, которые отмечены как "просмотренные"
 USER_WATCHED_TITLES: dict[int, set[str]] = {}
 
+# user_id -> {slug: track_name}  ТЕКУЩАЯ ОЗВУЧКА ДЛЯ ТАЙТЛА
+CURRENT_TRACK: dict[int, dict[str, str]] = {}
+
 # slug -> {title, genres, episodes{ep: {"tracks": {track_name: {source, skip}}}}}
 ANIME: dict[str, dict] = {}
 
@@ -167,11 +170,12 @@ def save_anime() -> None:
 # JSON SAVE/LOAD: USERS
 # ===============================
 def load_users() -> None:
-    global USER_PROGRESS, USER_FAVORITES, USER_WATCHED_TITLES
+    global USER_PROGRESS, USER_FAVORITES, USER_WATCHED_TITLES, CURRENT_TRACK
     if not os.path.exists(USERS_JSON_PATH):
         USER_PROGRESS = {}
         USER_FAVORITES = {}
         USER_WATCHED_TITLES = {}
+        CURRENT_TRACK = {}
         return
 
     try:
@@ -221,6 +225,21 @@ def load_users() -> None:
             else:
                 USER_WATCHED_TITLES[user_id] = set()
 
+        # current_track: user_id -> {slug: track_name}
+        CURRENT_TRACK = {}
+        for user_id_str, track_map in data.get("current_track", {}).items():
+            try:
+                user_id = int(user_id_str)
+            except ValueError:
+                continue
+            if isinstance(track_map, dict):
+                res = {}
+                for slug, tname in track_map.items():
+                    if isinstance(slug, str) and isinstance(tname, str):
+                        res[slug] = tname
+                if res:
+                    CURRENT_TRACK[user_id] = res
+
         print("Loaded users from users.json")
 
     except Exception as e:
@@ -228,6 +247,7 @@ def load_users() -> None:
         USER_PROGRESS = {}
         USER_FAVORITES = {}
         USER_WATCHED_TITLES = {}
+        CURRENT_TRACK = {}
 
 
 def save_users() -> None:
@@ -236,6 +256,7 @@ def save_users() -> None:
             "progress": {},
             "favorites": {},
             "watched_titles": {},
+            "current_track": {},
         }
 
         # progress: user_id -> {slug: ep}
@@ -249,6 +270,10 @@ def save_users() -> None:
         # watched titles
         for user_id, wt_set in USER_WATCHED_TITLES.items():
             data_to_save["watched_titles"][str(user_id)] = list(wt_set)
+
+        # current_track
+        for user_id, track_map in CURRENT_TRACK.items():
+            data_to_save["current_track"][str(user_id)] = track_map
 
         with open(USERS_JSON_PATH, "w", encoding="utf-8") as f:
             json.dump(data_to_save, f, ensure_ascii=False, indent=2)
@@ -435,6 +460,12 @@ def build_tracks_keyboard(slug: str, ep: int, current_track: Optional[str]) -> l
 
 def build_episode_keyboard(slug: str, ep: int, chat_id: int, current_track: Optional[str]) -> InlineKeyboardMarkup:
     episodes = ANIME[slug]["episodes"]
+
+    # определяем выбранную озвучку из CURRENT_TRACK, если не передали
+    user_tracks = CURRENT_TRACK.get(chat_id, {})
+    stored_track = user_tracks.get(slug)
+    if stored_track:
+        current_track = stored_track
 
     # --- ЛОГИКА НАЛИЧИЯ СЛЕДУЮЩЕЙ СЕРИИ В ТЕКУЩЕЙ/ДРУГОЙ ОЗВУЧКЕ ---
     has_prev = (ep - 1) in episodes
@@ -754,10 +785,13 @@ async def show_anime_by_genre(chat_id: int, context: ContextTypes.DEFAULT_TYPE, 
     SEARCH_MODE[chat_id] = False
 
 
-def _pick_track_for_episode(slug: str, ep: int, track_name: Optional[str]) -> tuple[Optional[str], Optional[dict]]:
+def _pick_track_for_episode(slug: str, ep: int, chat_id: int, track_name: Optional[str]) -> tuple[Optional[str], Optional[dict]]:
     """
     Возвращает (track_name, track_data) для серии.
-    Если track_name не задан или не найден — берём первую доступную.
+    Приоритет:
+    1) track_name из аргумента (если есть и существует)
+    2) сохранённая в CURRENT_TRACK[chat_id][slug]
+    3) первая доступная дорожка
     """
     anime = ANIME.get(slug)
     if not anime:
@@ -769,10 +803,17 @@ def _pick_track_for_episode(slug: str, ep: int, track_name: Optional[str]) -> tu
     if not tracks:
         return None, None
 
+    # 1) трек из аргумента
     if track_name and track_name in tracks:
         return track_name, tracks[track_name]
 
-    # Берём первую дорожку
+    # 2) сохранённый трек
+    user_tracks = CURRENT_TRACK.get(chat_id, {})
+    stored_track = user_tracks.get(slug)
+    if stored_track and stored_track in tracks:
+        return stored_track, tracks[stored_track]
+
+    # 3) первая дорожка
     first_name = next(iter(tracks.keys()))
     return first_name, tracks[first_name]
 
@@ -792,10 +833,13 @@ async def show_episode(
         await edit_caption_only(chat_id, context, "Такой серии нет", build_main_menu_keyboard(chat_id))
         return
 
-    chosen_track_name, track = _pick_track_for_episode(slug, ep, track_name)
+    chosen_track_name, track = _pick_track_for_episode(slug, ep, chat_id, track_name)
     if not track:
         await edit_caption_only(chat_id, context, "Нет доступных дорожек для этой серии.", build_main_menu_keyboard(chat_id))
         return
+
+    # сохраняем выбранную озвучку как текущую для этого пользователя и тайтла
+    CURRENT_TRACK.setdefault(chat_id, {})[slug] = chosen_track_name
 
     source = track.get("source")
     skip = track.get("skip")
@@ -964,7 +1008,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("next:"):
         _, slug, ep_str = data.split(":")
         current = int(ep_str)
-        await show_episode(chat_id, context, slug, current + 1)
+        next_ep = current + 1
+        # просто переходим к следующей серии, track выбирается через CURRENT_TRACK
+        await show_episode(chat_id, context, slug, next_ep)
         return
 
     # НОВЫЙ КЕЙС: следующая серия только в другой озвучке
@@ -989,7 +1035,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await edit_caption_only(chat_id, context, "У следующей серии нет доступных дорожек.", build_main_menu_keyboard(chat_id))
             return
 
-        # Берём первую доступную озвучку
+        # Берём первую доступную озвучку у следующей серии
         some_track_name = next(iter(tracks.keys()))
         await show_episode(chat_id, context, slug, next_ep, track_name=some_track_name)
         return
@@ -1061,6 +1107,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _, slug, ep_str, safe_tname = data.split(":", 3)
         ep = int(ep_str)
         track_name = safe_tname.replace("__colon__", ":")
+        # при смене дорожки сразу обновляем CURRENT_TRACK и показываем серию
         await show_episode(chat_id, context, slug, ep, track_name=track_name)
         return
 
