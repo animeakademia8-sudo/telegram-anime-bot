@@ -1282,7 +1282,7 @@ async def cmd_dump_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ===============================
-# /clear_slug <slug>
+# /clear_slug — удалить весь тайтл
 # ===============================
 async def cmd_clear_slug(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
@@ -1290,61 +1290,130 @@ async def cmd_clear_slug(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     chat_id = update.effective_chat.id
-
-    # Только для админа
     if chat_id != ADMIN_ID:
         await msg.reply_text("⛔ Эта команда только для админа.")
         return
 
     if not context.args:
-        await msg.reply_text("❗ Используй: /clear_slug <slug>\nНапример: /clear_slug naruto")
+        await msg.reply_text("❗ Использование: /clear_slug <slug>")
         return
 
     slug = context.args[0].strip()
 
     if slug not in ANIME:
-        await msg.reply_text(f"⚠️ Тайтл со slug '{slug}' не найден в базе.")
+        await msg.reply_text(f"⚠️ Тайтл с slug '{slug}' не найден.")
         return
 
-    # Удаляем тайтл из ANIME
+    # Удаляем из ANIME
     del ANIME[slug]
-    save_anime()
 
-    # Чистим данные пользователей
-    changed = False
-
+    # Чистим у всех пользователей
     # progress
-    for uid, prog in list(USER_PROGRESS.items()):
-        if slug in prog:
-            del prog[slug]
-            changed = True
-            if not prog:
+    for uid in list(USER_PROGRESS.keys()):
+        if slug in USER_PROGRESS[uid]:
+            del USER_PROGRESS[uid][slug]
+            if not USER_PROGRESS[uid]:
                 del USER_PROGRESS[uid]
 
     # favorites
-    for uid, favs in list(USER_FAVORITES.items()):
-        if slug in favs:
-            favs.discard(slug)
-            changed = True
+    for uid in list(USER_FAVORITES.keys()):
+        if slug in USER_FAVORITES[uid]:
+            USER_FAVORITES[uid].discard(slug)
 
-    # watched titles
-    for uid, wt in list(USER_WATCHED_TITLES.items()):
-        if slug in wt:
-            wt.discard(slug)
-            changed = True
+    # watched_titles
+    for uid in list(USER_WATCHED_TITLES.keys()):
+        if slug in USER_WATCHED_TITLES[uid]:
+            USER_WATCHED_TITLES[uid].discard(slug)
 
     # current_track
-    for uid, tr in list(CURRENT_TRACK.items()):
-        if slug in tr:
-            del tr[slug]
-            changed = True
-            if not tr:
+    for uid in list(CURRENT_TRACK.keys()):
+        if slug in CURRENT_TRACK[uid]:
+            del CURRENT_TRACK[uid][slug]
+            if not CURRENT_TRACK[uid]:
                 del CURRENT_TRACK[uid]
 
-    if changed:
+    save_anime()
+    save_users()
+
+    await msg.reply_text(f"✅ Тайтл '{slug}' и все связанные данные удалены.")
+
+
+# ===============================
+# /clear_ep — удалить одну серию тайтла
+# ===============================
+async def cmd_clear_ep(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    if not msg:
+        return
+
+    chat_id = update.effective_chat.id
+    if chat_id != ADMIN_ID:
+        await msg.reply_text("⛔ Эта команда только для админа.")
+        return
+
+    if len(context.args) < 2:
+        await msg.reply_text("❗ Использование: /clear_ep <slug> <ep>")
+        return
+
+    slug = context.args[0].strip()
+    ep_str = context.args[1].strip()
+
+    try:
+        ep = int(ep_str)
+    except ValueError:
+        await msg.reply_text("❌ Номер серии должен быть числом.")
+        return
+
+    anime = ANIME.get(slug)
+    if not anime:
+        await msg.reply_text(f"⚠️ Тайтл с slug '{slug}' не найден.")
+        return
+
+    episodes = anime.get("episodes", {})
+
+    if ep not in episodes:
+        await msg.reply_text(f"⚠️ У тайтла '{slug}' нет серии {ep}.")
+        return
+
+    # Удаляем серию
+    del episodes[ep]
+
+    # Если серий не осталось — удаляем тайтл полностью
+    if not episodes:
+        del ANIME[slug]
+
+        # Чистим все пользовательские данные по этому slug
+        for uid in list(USER_PROGRESS.keys()):
+            if slug in USER_PROGRESS[uid]:
+                del USER_PROGRESS[uid][slug]
+                if not USER_PROGRESS[uid]:
+                    del USER_PROGRESS[uid]
+
+        for uid in list(USER_FAVORITES.keys()):
+            if slug in USER_FAVORITES[uid]:
+                USER_FAVORITES[uid].discard(slug)
+
+        for uid in list(USER_WATCHED_TITLES.keys()):
+            if slug in USER_WATCHED_TITLES[uid]:
+                USER_WATCHED_TITLES[uid].discard(slug)
+
+        for uid in list(CURRENT_TRACK.keys()):
+            if slug in CURRENT_TRACK[uid]:
+                del CURRENT_TRACK[uid][slug]
+                if not CURRENT_TRACK[uid]:
+                    del CURRENT_TRACK[uid]
+
+        save_anime()
         save_users()
 
-    await msg.reply_text(f"✅ Тайтл '{slug}' и все связанные данные удалены. Можешь залить его заново.")
+        await msg.reply_text(f"✅ Серия {ep} удалена. У тайтла не осталось серий, тайтл '{slug}' полностью удалён.")
+        return
+
+    # если тайтл остался — просто сохраняем
+    ANIME[slug]["episodes"] = episodes
+    save_anime()
+
+    await msg.reply_text(f"✅ У тайтла '{slug}' удалена серия {ep}.")
 
 
 # ===============================
@@ -1397,6 +1466,7 @@ def main():
     app.add_handler(CommandHandler("fix", cmd_fix))
     app.add_handler(CommandHandler("dump_all", cmd_dump_all))
     app.add_handler(CommandHandler("clear_slug", cmd_clear_slug))
+    app.add_handler(CommandHandler("clear_ep", cmd_clear_ep))
 
     app.add_handler(CallbackQueryHandler(handle_callback))
 
