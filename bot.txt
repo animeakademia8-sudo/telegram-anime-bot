@@ -53,7 +53,7 @@ USER_WATCHED_TITLES: dict[int, set[str]] = {}
 # user_id -> {slug: track_name}  ТЕКУЩАЯ ОЗВУЧКА ДЛЯ ТАЙТЛА
 CURRENT_TRACK: dict[int, dict[str, str]] = {}
 
-# slug -> {title, genres, episodes{ep: {"tracks": {track_name: {source, skip}}}}}
+# slug -> {title, genres, status, episodes{ep: {"tracks": {track_name: {source, skip}}}}}
 ANIME: dict[str, dict] = {}
 
 
@@ -77,6 +77,7 @@ def load_anime() -> None:
         for slug, anime in data.items():
             title = anime.get("title", "")
             genres = anime.get("genres", [])
+            status = anime.get("status", "ongoing")  # по умолчанию считаем онгоингом
             episodes_raw = anime.get("episodes", {})
 
             episodes: dict[int, dict] = {}
@@ -126,6 +127,7 @@ def load_anime() -> None:
             fixed_data[slug] = {
                 "title": title,
                 "genres": genres,
+                "status": status,
                 "episodes": episodes,
             }
 
@@ -157,6 +159,7 @@ def save_anime() -> None:
             data_to_save[slug] = {
                 "title": anime.get("title", ""),
                 "genres": anime.get("genres", []),
+                "status": anime.get("status", "ongoing"),
                 "episodes": eps_json,
             }
 
@@ -297,7 +300,7 @@ def parse_caption_to_meta(caption: str) -> Optional[dict]:
         key, value = line.split(":", 1)
         key = key.strip().lower()
         value = value.strip()
-        if key in ("slug", "title", "ep", "genres", "skip", "ozv"):
+        if key in ("slug", "title", "ep", "genres", "skip", "ozv", "status"):
             data[key] = value
 
     if "slug" not in data or "title" not in data or "ep" not in data:
@@ -312,6 +315,12 @@ def parse_caption_to_meta(caption: str) -> Optional[dict]:
     if "genres" in data and data["genres"]:
         genres_list = [g.strip().lower() for g in data["genres"].split(",") if g.strip()]
 
+    status = data.get("status", "ongoing").lower()
+    if status not in ("ongoing", "finish", "finished", "completed"):
+        status = "ongoing"
+    if status in ("finished", "completed"):
+        status = "finish"
+
     return {
         "slug": data["slug"],
         "title": data["title"],
@@ -319,6 +328,7 @@ def parse_caption_to_meta(caption: str) -> Optional[dict]:
         "genres": genres_list,
         "skip": data.get("skip"),
         "ozv": data.get("ozv"),
+        "status": status,
     }
 
 
@@ -333,6 +343,7 @@ def add_or_update_anime_from_message(msg: Message) -> Optional[str]:
             "slug: ...\n"
             "title: ...\n"
             "ep: ...\n"
+            "[status: ongoing/finish]\n"
             "[ozv: ...]\n"
             "[skip: ...]\n"
             "[genres: ...]"
@@ -344,18 +355,21 @@ def add_or_update_anime_from_message(msg: Message) -> Optional[str]:
     genres = meta["genres"]
     skip = meta["skip"]
     ozv = meta["ozv"] or "default"
+    status = meta["status"]  # "ongoing" или "finish"
     file_id = msg.video.file_id
 
     if slug not in ANIME:
         ANIME[slug] = {
             "title": title,
             "genres": genres,
+            "status": status,
             "episodes": {},
         }
     else:
         ANIME[slug]["title"] = title
         if genres:
             ANIME[slug]["genres"] = genres
+        ANIME[slug]["status"] = status
 
     ANIME[slug].setdefault("episodes", {})
     ep_obj = ANIME[slug]["episodes"].setdefault(ep, {"tracks": {}})
@@ -368,7 +382,7 @@ def add_or_update_anime_from_message(msg: Message) -> Optional[str]:
 
     save_anime()
 
-    return f"✅ Обновлено: {title} (slug: {slug}), серия {ep}, озвучка: {ozv}"
+    return f"✅ Обновлено: {title} (slug: {slug}), серия {ep}, статус: {status}, озвучка: {ozv}"
 
 
 # ===============================
@@ -381,7 +395,10 @@ def build_main_menu_keyboard(chat_id: int) -> InlineKeyboardMarkup:
             InlineKeyboardButton("🎲 Случайное", callback_data="random"),
         ],
         [
+            InlineKeyboardButton("▶ Онгоинги", callback_data="ongoings"),
             InlineKeyboardButton("⭐ Продолжить", callback_data="continue"),
+        ],
+        [
             InlineKeyboardButton("🔍 Поиск", callback_data="search"),
         ],
         [
@@ -416,12 +433,30 @@ def build_anime_by_genre_keyboard(genre: str) -> InlineKeyboardMarkup:
     keyboard = []
     for slug, anime in ANIME.items():
         if genre in anime.get("genres", []):
-            keyboard.append([InlineKeyboardButton(anime["title"], callback_data=f"anime:{slug}")])
+            title = anime["title"]
+            status = anime.get("status", "ongoing")
+            if status == "ongoing":
+                title = f"{title} [Онг.]"
+            keyboard.append([InlineKeyboardButton(title, callback_data=f"anime:{slug}")])
     if not keyboard:
         keyboard.append([InlineKeyboardButton("Ничего не найдено", callback_data="catalog")])
     keyboard.append([InlineKeyboardButton("⬅️ Жанры", callback_data="catalog")])
     keyboard.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
     return InlineKeyboardMarkup(keyboard)
+
+
+def build_ongoings_keyboard() -> InlineKeyboardMarkup:
+    rows = []
+    for slug, anime in ANIME.items():
+        if anime.get("status", "ongoing") == "ongoing":
+            title = anime["title"] + " [Онг.]"
+            rows.append([InlineKeyboardButton(title, callback_data=f"anime:{slug}")])
+
+    if not rows:
+        rows.append([InlineKeyboardButton("Нет онгоингов", callback_data="menu")])
+
+    rows.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
+    return InlineKeyboardMarkup(rows)
 
 
 def build_tracks_keyboard(slug: str, ep: int, current_track: Optional[str]) -> list[list[InlineKeyboardButton]]:
@@ -545,7 +580,11 @@ def build_episode_list_keyboard(slug: str) -> InlineKeyboardMarkup:
 def build_anime_menu(chat_id: int) -> InlineKeyboardMarkup:
     keyboard = []
     for slug, anime in ANIME.items():
-        keyboard.append([InlineKeyboardButton(anime["title"], callback_data=f"anime:{slug}")])
+        title = anime["title"]
+        status = anime.get("status", "ongoing")
+        if status == "ongoing":
+            title = f"{title} [Онг.]"
+        keyboard.append([InlineKeyboardButton(title, callback_data=f"anime:{slug}")])
     if not keyboard:
         keyboard.append([InlineKeyboardButton("Пока нет аниме", callback_data="menu")])
     keyboard.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
@@ -556,7 +595,11 @@ def build_favorites_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     favs = USER_FAVORITES.get(chat_id, set())
     rows = []
     for slug in favs:
-        title = ANIME.get(slug, {}).get("title", slug)
+        anime = ANIME.get(slug, {})
+        title = anime.get("title", slug)
+        status = anime.get("status", "ongoing")
+        if status == "ongoing":
+            title = f"{title} [Онг.]"
         rows.append([InlineKeyboardButton(title, callback_data=f"anime:{slug}")])
     if not rows:
         rows = [[InlineKeyboardButton("Пусто", callback_data="menu")]]
@@ -568,7 +611,11 @@ def build_watched_titles_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     watched_titles = USER_WATCHED_TITLES.get(chat_id, set())
     rows = []
     for slug in sorted(watched_titles):
-        title = ANIME.get(slug, {}).get("title", slug)
+        anime = ANIME.get(slug, {})
+        title = anime.get("title", slug)
+        status = anime.get("status", "ongoing")
+        if status == "ongoing":
+            title = f"{title} [Онг.]"
         rows.append([InlineKeyboardButton(title, callback_data=f"anime:{slug}")])
     if not rows:
         rows = [[InlineKeyboardButton("Пусто", callback_data="menu")]]
@@ -586,7 +633,11 @@ def build_continue_keyboard(chat_id: int) -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(rows)
 
     for slug, ep in user_prog.items():
-        title = ANIME.get(slug, {}).get("title", slug)
+        anime = ANIME.get(slug, {})
+        title = anime.get("title", slug)
+        status = anime.get("status", "ongoing")
+        if status == "ongoing":
+            title = f"{title} [Онг.]"
         rows.append([
             InlineKeyboardButton(
                 f"{title} — с {ep} серии",
@@ -600,7 +651,11 @@ def build_continue_keyboard(chat_id: int) -> InlineKeyboardMarkup:
 
 def build_continue_item_keyboard(chat_id: int, slug: str) -> InlineKeyboardMarkup:
     ep = USER_PROGRESS.get(chat_id, {}).get(slug)
-    title = ANIME.get(slug, {}).get("title", slug)
+    anime = ANIME.get(slug, {})
+    title = anime.get("title", slug)
+    status = anime.get("status", "ongoing")
+    if status == "ongoing":
+        title = f"{title} [Онг.]"
 
     rows = []
 
@@ -627,6 +682,21 @@ def build_continue_item_keyboard(chat_id: int, slug: str) -> InlineKeyboardMarku
         InlineKeyboardButton("🍄 Меню", callback_data="menu")
     ])
 
+    return InlineKeyboardMarkup(rows)
+
+
+def build_search_results_keyboard(matches: list[str]) -> InlineKeyboardMarkup:
+    rows = []
+    for slug in matches:
+        anime = ANIME.get(slug, {})
+        title = anime.get("title", slug)
+        status = anime.get("status", "ongoing")
+        if status == "ongoing":
+            title = f"{title} [Онг.]"
+        rows.append([InlineKeyboardButton(title, callback_data=f"anime:{slug}")])
+    if not rows:
+        rows = [[InlineKeyboardButton("Ничего не найдено", callback_data="menu")]]
+    rows.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -785,6 +855,13 @@ async def show_anime_by_genre(chat_id: int, context: ContextTypes.DEFAULT_TYPE, 
     SEARCH_MODE[chat_id] = False
 
 
+async def show_ongoings(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
+    caption = "Онгоинги (ещё выходят):"
+    kb = build_ongoings_keyboard()
+    await edit_caption_only(chat_id, context, caption, kb)
+    SEARCH_MODE[chat_id] = False
+
+
 def _pick_track_for_episode(slug: str, ep: int, chat_id: int, track_name: Optional[str]) -> tuple[Optional[str], Optional[dict]]:
     """
     Возвращает (track_name, track_data) для серии.
@@ -845,7 +922,9 @@ async def show_episode(
     skip = track.get("skip")
 
     title = anime["title"]
-    caption_lines = [f"{title}\nСерия {ep}"]
+    status = anime.get("status", "ongoing")
+    status_label = "Онгоинг" if status == "ongoing" else "Завершён"
+    caption_lines = [f"{title} ({status_label})\nСерия {ep}"]
     if chosen_track_name:
         label = chosen_track_name if chosen_track_name != "default" else "Без названия"
         caption_lines.append(f"Озвучка: {label}")
@@ -867,7 +946,10 @@ async def show_episode_list(chat_id: int, context: ContextTypes.DEFAULT_TYPE, sl
     if not anime:
         await edit_caption_only(chat_id, context, "Аниме не найдено", build_main_menu_keyboard(chat_id))
         return
-    caption = f"{anime['title']}\nВыбери серию:"
+    title = anime['title']
+    status = anime.get("status", "ongoing")
+    status_label = "Онгоинг" if status == "ongoing" else "Завершён"
+    caption = f"{title} ({status_label})\nВыбери серию:"
     kb = build_episode_list_keyboard(slug)
     await edit_caption_only(chat_id, context, caption, kb)
     SEARCH_MODE[chat_id] = False
@@ -926,6 +1008,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "random":
         await show_random(chat_id, context)
+        return
+
+    if data == "ongoings":
+        await show_ongoings(chat_id, context)
         return
 
     if data == "continue":
@@ -1130,11 +1216,10 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     q = text.lower()
-    found_slug = None
+    matches: list[str] = []
     for slug, anime in ANIME.items():
         if q in anime["title"].lower():
-            found_slug = slug
-            break
+            matches.append(slug)
 
     # Удаляем сообщение с текстом поиска
     try:
@@ -1142,7 +1227,7 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         pass
 
-    if not found_slug:
+    if not matches:
         await edit_caption_only(
             chat_id,
             context,
@@ -1152,15 +1237,32 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         SEARCH_MODE[chat_id] = False
         return
 
-    # первая серия найденного тайтла
-    anime = ANIME.get(found_slug)
-    if not anime or not anime.get("episodes"):
-        await edit_caption_only(chat_id, context, "У этого тайтла ещё нет серий.", build_main_menu_keyboard(chat_id))
+    # Если найден один — сразу открываем первую серию
+    if len(matches) == 1:
+        found_slug = matches[0]
+        anime = ANIME.get(found_slug)
+        if not anime or not anime.get("episodes"):
+            await edit_caption_only(
+                chat_id,
+                context,
+                "У этого тайтла ещё нет серий.",
+                build_main_menu_keyboard(chat_id),
+            )
+            SEARCH_MODE[chat_id] = False
+            return
+        first_ep = sorted(anime["episodes"].keys())[0]
+        await show_episode(chat_id, context, found_slug, first_ep)
         SEARCH_MODE[chat_id] = False
         return
 
-    first_ep = sorted(anime["episodes"].keys())[0]
-    await show_episode(chat_id, context, found_slug, first_ep)
+    # Если совпадений несколько — показываем список клавиатурой
+    kb = build_search_results_keyboard(matches)
+    await edit_caption_only(
+        chat_id,
+        context,
+        f"🔍 Нашёл несколько тайтлов по запросу «{text}»:\nВыбери нужный:",
+        kb,
+    )
     SEARCH_MODE[chat_id] = False
 
 
@@ -1282,7 +1384,7 @@ async def cmd_dump_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ===============================
-# /clear_slug <slug>
+# /clear_slug — удалить весь тайтл
 # ===============================
 async def cmd_clear_slug(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
@@ -1290,61 +1392,130 @@ async def cmd_clear_slug(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     chat_id = update.effective_chat.id
-
-    # Только для админа
     if chat_id != ADMIN_ID:
         await msg.reply_text("⛔ Эта команда только для админа.")
         return
 
     if not context.args:
-        await msg.reply_text("❗ Используй: /clear_slug <slug>\nНапример: /clear_slug naruto")
+        await msg.reply_text("❗ Использование: /clear_slug <slug>")
         return
 
     slug = context.args[0].strip()
 
     if slug not in ANIME:
-        await msg.reply_text(f"⚠️ Тайтл со slug '{slug}' не найден в базе.")
+        await msg.reply_text(f"⚠️ Тайтл с slug '{slug}' не найден.")
         return
 
-    # Удаляем тайтл из ANIME
+    # Удаляем из ANIME
     del ANIME[slug]
-    save_anime()
 
-    # Чистим данные пользователей
-    changed = False
-
+    # Чистим у всех пользователей
     # progress
-    for uid, prog in list(USER_PROGRESS.items()):
-        if slug in prog:
-            del prog[slug]
-            changed = True
-            if not prog:
+    for uid in list(USER_PROGRESS.keys()):
+        if slug in USER_PROGRESS[uid]:
+            del USER_PROGRESS[uid][slug]
+            if not USER_PROGRESS[uid]:
                 del USER_PROGRESS[uid]
 
     # favorites
-    for uid, favs in list(USER_FAVORITES.items()):
-        if slug in favs:
-            favs.discard(slug)
-            changed = True
+    for uid in list(USER_FAVORITES.keys()):
+        if slug in USER_FAVORITES[uid]:
+            USER_FAVORITES[uid].discard(slug)
 
-    # watched titles
-    for uid, wt in list(USER_WATCHED_TITLES.items()):
-        if slug in wt:
-            wt.discard(slug)
-            changed = True
+    # watched_titles
+    for uid in list(USER_WATCHED_TITLES.keys()):
+        if slug in USER_WATCHED_TITLES[uid]:
+            USER_WATCHED_TITLES[uid].discard(slug)
 
     # current_track
-    for uid, tr in list(CURRENT_TRACK.items()):
-        if slug in tr:
-            del tr[slug]
-            changed = True
-            if not tr:
+    for uid in list(CURRENT_TRACK.keys()):
+        if slug in CURRENT_TRACK[uid]:
+            del CURRENT_TRACK[uid][slug]
+            if not CURRENT_TRACK[uid]:
                 del CURRENT_TRACK[uid]
 
-    if changed:
+    save_anime()
+    save_users()
+
+    await msg.reply_text(f"✅ Тайтл '{slug}' и все связанные данные удалены.")
+
+
+# ===============================
+# /clear_ep — удалить одну серию тайтла
+# ===============================
+async def cmd_clear_ep(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    if not msg:
+        return
+
+    chat_id = update.effective_chat.id
+    if chat_id != ADMIN_ID:
+        await msg.reply_text("⛔ Эта команда только для админа.")
+        return
+
+    if len(context.args) < 2:
+        await msg.reply_text("❗ Использование: /clear_ep <slug> <ep>")
+        return
+
+    slug = context.args[0].strip()
+    ep_str = context.args[1].strip()
+
+    try:
+        ep = int(ep_str)
+    except ValueError:
+        await msg.reply_text("❌ Номер серии должен быть числом.")
+        return
+
+    anime = ANIME.get(slug)
+    if not anime:
+        await msg.reply_text(f"⚠️ Тайтл с slug '{slug}' не найден.")
+        return
+
+    episodes = anime.get("episodes", {})
+
+    if ep not in episodes:
+        await msg.reply_text(f"⚠️ У тайтла '{slug}' нет серии {ep}.")
+        return
+
+    # Удаляем серию
+    del episodes[ep]
+
+    # Если серий не осталось — удаляем тайтл полностью
+    if not episodes:
+        del ANIME[slug]
+
+        # Чистим все пользовательские данные по этому slug
+        for uid in list(USER_PROGRESS.keys()):
+            if slug in USER_PROGRESS[uid]:
+                del USER_PROGRESS[uid][slug]
+                if not USER_PROGRESS[uid]:
+                    del USER_PROGRESS[uid]
+
+        for uid in list(USER_FAVORITES.keys()):
+            if slug in USER_FAVORITES[uid]:
+                USER_FAVORITES[uid].discard(slug)
+
+        for uid in list(USER_WATCHED_TITLES.keys()):
+            if slug in USER_WATCHED_TITLES[uid]:
+                USER_WATCHED_TITLES[uid].discard(slug)
+
+        for uid in list(CURRENT_TRACK.keys()):
+            if slug in CURRENT_TRACK[uid]:
+                del CURRENT_TRACK[uid][slug]
+                if not CURRENT_TRACK[uid]:
+                    del CURRENT_TRACK[uid]
+
+        save_anime()
         save_users()
 
-    await msg.reply_text(f"✅ Тайтл '{slug}' и все связанные данные удалены. Можешь залить его заново.")
+        await msg.reply_text(f"✅ Серия {ep} удалена. У тайтла не осталось серий, тайтл '{slug}' полностью удалён.")
+        return
+
+    # если тайтл остался — просто сохраняем
+    ANIME[slug]["episodes"] = episodes
+    save_anime()
+
+    await msg.reply_text(f"✅ У тайтла '{slug}' удалена серия {ep}.")
 
 
 # ===============================
@@ -1397,6 +1568,7 @@ def main():
     app.add_handler(CommandHandler("fix", cmd_fix))
     app.add_handler(CommandHandler("dump_all", cmd_dump_all))
     app.add_handler(CommandHandler("clear_slug", cmd_clear_slug))
+    app.add_handler(CommandHandler("clear_ep", cmd_clear_ep))
 
     app.add_handler(CallbackQueryHandler(handle_callback))
 

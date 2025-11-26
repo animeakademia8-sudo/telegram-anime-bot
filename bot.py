@@ -685,6 +685,21 @@ def build_continue_item_keyboard(chat_id: int, slug: str) -> InlineKeyboardMarku
     return InlineKeyboardMarkup(rows)
 
 
+def build_search_results_keyboard(matches: list[str]) -> InlineKeyboardMarkup:
+    rows = []
+    for slug in matches:
+        anime = ANIME.get(slug, {})
+        title = anime.get("title", slug)
+        status = anime.get("status", "ongoing")
+        if status == "ongoing":
+            title = f"{title} [Онг.]"
+        rows.append([InlineKeyboardButton(title, callback_data=f"anime:{slug}")])
+    if not rows:
+        rows = [[InlineKeyboardButton("Ничего не найдено", callback_data="menu")]]
+    rows.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
+    return InlineKeyboardMarkup(rows)
+
+
 # ===============================
 # HELPERS: single-message logic
 # ===============================
@@ -1201,11 +1216,10 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     q = text.lower()
-    found_slug = None
+    matches: list[str] = []
     for slug, anime in ANIME.items():
         if q in anime["title"].lower():
-            found_slug = slug
-            break
+            matches.append(slug)
 
     # Удаляем сообщение с текстом поиска
     try:
@@ -1213,7 +1227,7 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         pass
 
-    if not found_slug:
+    if not matches:
         await edit_caption_only(
             chat_id,
             context,
@@ -1223,15 +1237,32 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         SEARCH_MODE[chat_id] = False
         return
 
-    # первая серия найденного тайтла
-    anime = ANIME.get(found_slug)
-    if not anime or not anime.get("episodes"):
-        await edit_caption_only(chat_id, context, "У этого тайтла ещё нет серий.", build_main_menu_keyboard(chat_id))
+    # Если найден один — сразу открываем первую серию
+    if len(matches) == 1:
+        found_slug = matches[0]
+        anime = ANIME.get(found_slug)
+        if not anime or not anime.get("episodes"):
+            await edit_caption_only(
+                chat_id,
+                context,
+                "У этого тайтла ещё нет серий.",
+                build_main_menu_keyboard(chat_id),
+            )
+            SEARCH_MODE[chat_id] = False
+            return
+        first_ep = sorted(anime["episodes"].keys())[0]
+        await show_episode(chat_id, context, found_slug, first_ep)
         SEARCH_MODE[chat_id] = False
         return
 
-    first_ep = sorted(anime["episodes"].keys())[0]
-    await show_episode(chat_id, context, found_slug, first_ep)
+    # Если совпадений несколько — показываем список клавиатурой
+    kb = build_search_results_keyboard(matches)
+    await edit_caption_only(
+        chat_id,
+        context,
+        f"🔍 Нашёл несколько тайтлов по запросу «{text}»:\nВыбери нужный:",
+        kb,
+    )
     SEARCH_MODE[chat_id] = False
 
 
