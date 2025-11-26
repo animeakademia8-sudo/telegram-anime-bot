@@ -435,14 +435,30 @@ def build_tracks_keyboard(slug: str, ep: int, current_track: Optional[str]) -> l
 
 def build_episode_keyboard(slug: str, ep: int, chat_id: int, current_track: Optional[str]) -> InlineKeyboardMarkup:
     episodes = ANIME[slug]["episodes"]
-    has_prev = (ep - 1) in episodes
-    has_next = (ep + 1) in episodes
 
-    nav = []
+    # --- ЛОГИКА НАЛИЧИЯ СЛЕДУЮЩЕЙ СЕРИИ В ТЕКУЩЕЙ/ДРУГОЙ ОЗВУЧКЕ ---
+    has_prev = (ep - 1) in episodes
+
+    has_next_same_track = False
+    has_next_other_track = False
+
+    if (ep + 1) in episodes:
+        next_tracks = episodes[ep + 1].get("tracks", {})
+        if current_track and current_track in next_tracks:
+            has_next_same_track = True
+        elif next_tracks:
+            has_next_other_track = True
+
+    nav: list[InlineKeyboardButton] = []
     if has_prev:
         nav.append(InlineKeyboardButton("◀️ Предыдущая", callback_data=f"prev:{slug}:{ep}"))
-    if has_next:
+
+    # Если есть следующая серия в той же озвучке — обычная кнопка
+    if has_next_same_track:
         nav.append(InlineKeyboardButton("Следующая ▶️", callback_data=f"next:{slug}:{ep}"))
+    # Если только в другой озвучке — другая кнопка
+    elif has_next_other_track:
+        nav.append(InlineKeyboardButton("Следущая (другая озвучка) ▶️", callback_data=f"next_other:{slug}:{ep}"))
 
     fav_set = USER_FAVORITES.get(chat_id, set())
     if slug in fav_set:
@@ -761,20 +777,6 @@ def _pick_track_for_episode(slug: str, ep: int, track_name: Optional[str]) -> tu
     return first_name, tracks[first_name]
 
 
-def episode_has_track(slug: str, ep: int, track_name: str) -> bool:
-    """
-    Проверяем, есть ли у указанной серии дорожка с таким названием.
-    """
-    anime = ANIME.get(slug)
-    if not anime:
-        return False
-    ep_obj = anime["episodes"].get(ep)
-    if not ep_obj:
-        return False
-    tracks = ep_obj.get("tracks", {})
-    return track_name in tracks
-
-
 async def show_episode(
     chat_id: int,
     context: ContextTypes.DEFAULT_TYPE,
@@ -960,34 +962,36 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data.startswith("next:"):
-        # формат: next:slug:current_ep
+        _, slug, ep_str = data.split(":")
+        current = int(ep_str)
+        await show_episode(chat_id, context, slug, current + 1)
+        return
+
+    # НОВЫЙ КЕЙС: следующая серия только в другой озвучке
+    if data.startswith("next_other:"):
         _, slug, ep_str = data.split(":")
         current = int(ep_str)
         next_ep = current + 1
 
         anime = ANIME.get(slug)
-        if not anime or next_ep not in anime.get("episodes", {}):
-            await query.answer("Следующая серия ещё не добавлена.", show_alert=True)
+        if not anime:
+            await edit_caption_only(chat_id, context, "Аниме не найдено", build_main_menu_keyboard(chat_id))
             return
 
-        # вытаскиваем текущую озвучку из подписи
-        msg = query.message
-        current_track_name: Optional[str] = None
-        if msg and msg.caption:
-            for line in msg.caption.splitlines():
-                line = line.strip()
-                if line.lower().startswith("озвучка:"):
-                    current_track_name = line.split(":", 1)[1].strip()
-                    if current_track_name == "Без названия":
-                        current_track_name = "default"
-                    break
-
-        if current_track_name and not episode_has_track(slug, next_ep, current_track_name):
-            await query.answer("Для следующей серии нет дорожки в выбранной озвучке.", show_alert=True)
+        episodes = anime.get("episodes", {})
+        ep_obj = episodes.get(next_ep)
+        if not ep_obj:
+            await edit_caption_only(chat_id, context, "Следующей серии нет.", build_main_menu_keyboard(chat_id))
             return
 
-        # если дорожка есть или озвучка не выбрана, просто показываем серию
-        await show_episode(chat_id, context, slug, next_ep, track_name=current_track_name)
+        tracks = ep_obj.get("tracks", {})
+        if not tracks:
+            await edit_caption_only(chat_id, context, "У следующей серии нет доступных дорожек.", build_main_menu_keyboard(chat_id))
+            return
+
+        # Берём первую доступную озвучку
+        some_track_name = next(iter(tracks.keys()))
+        await show_episode(chat_id, context, slug, next_ep, track_name=some_track_name)
         return
 
     if data.startswith("prev:"):
