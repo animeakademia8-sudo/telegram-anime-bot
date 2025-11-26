@@ -1,51 +1,14 @@
 {
-  "progress": {
-    "852405425": {
-      "pridvornii": 1,
-      "ga4iakyta": 3
-    },
-    "710610332": {
-      "ga4iakyta": 3,
-      "pridvornii": 1
-    },
-    "1983768215": {
-      "ga4iakyta": 1
-    },
-    "1469083491": {
-      "pridvornii": 1,
-      "ga4iakyta": 2
-    },
-    "1597662632": {
-      "ga4iakyta": 1
-    },
-    "6650200661": {
-      "pridvornii": 1
-    },
-    "5862435405": {
-      "ga4iakyta": 1,
-      "pridvornii": 1
-    }
-  },
+  "progress": {},
   "favorites": {
-    "852405425": [
-      "pridvornii",
-      "ga4iakyta"
-    ],
-    "710610332": [
-      "ga4iakyta"
-    ],
-    "5862435405": [
-      "pridvornii",
-      "ga4iakyta"
-    ]
+    "852405425": [],
+    "710610332": [],
+    "5862435405": []
   },
   "watched_titles": {
-    "710610332": [
-      "ga4iakyta"
-    ],
-    "852405425": [
-      "ga4iakyta"
-    ],
+    "710610332": [],
+    "852405425": [],
     "1983768215": []
-  }
+  },
+  "current_track": {}
 }
