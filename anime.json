@@ -9,28 +9,68 @@
     ],
     "episodes": {
       "1": {
-        "source": "BAACAgIAAxkBAAIC3GkkOM-7t-w06khdsdltYWevP4uGAALAigACC2whSaYsDQuBaW6oNgQ"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAxkBAAIC3GkkOM-7t-w06khdsdltYWevP4uGAALAigACC2whSaYsDQuBaW6oNgQ",
+            "skip": null
+          }
+        }
       },
       "2": {
-        "source": "BAACAgIAAxkBAAIC5mkkO1KvLt1dgCdWBIbCy0pzRCXyAALBigACC2whSUTWBHO3NgTZNgQ"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAxkBAAIC5mkkO1KvLt1dgCdWBIbCy0pzRCXyAALBigACC2whSUTWBHO3NgTZNgQ",
+            "skip": null
+          }
+        }
       },
       "3": {
-        "source": "BAACAgIAAxkBAAIC6GkkO1xpW64VhQi9QH7CFVYpwT5JAALDigACC2whSeRl-8aKAnmpNgQ"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAxkBAAIC6GkkO1xpW64VhQi9QH7CFVYpwT5JAALDigACC2whSeRl-8aKAnmpNgQ",
+            "skip": null
+          }
+        }
       },
       "4": {
-        "source": "BAACAgIAAxkBAAIC6mkkO2cxrUllPgkSkWeoFZJo_liEAALFigACC2whSdoyTGtBVN4mNgQ"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAxkBAAIC6mkkO2cxrUllPgkSkWeoFZJo_liEAALFigACC2whSdoyTGtBVN4mNgQ",
+            "skip": null
+          }
+        }
       },
       "5": {
-        "source": "BAACAgIAAxkBAAIC7GkkO3RChv68Mm4frnbEj1SlxK-qAALHigACC2whSYpzVplj8OSdNgQ"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAxkBAAIC7GkkO3RChv68Mm4frnbEj1SlxK-qAALHigACC2whSYpzVplj8OSdNgQ",
+            "skip": null
+          }
+        }
       },
       "6": {
-        "source": "BAACAgIAAxkBAAIC7mkkO4IGNJBEoBj7QCprmG1JM55aAALKigACC2whSYoiXyJgaPYnNgQ"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAxkBAAIC7mkkO4IGNJBEoBj7QCprmG1JM55aAALKigACC2whSYoiXyJgaPYnNgQ",
+            "skip": null
+          }
+        }
       },
       "7": {
-        "source": "BAACAgIAAxkBAAIC8GkkO4_XK3w-fG52q2Oy0ze8_6f5AALNigACC2whSUqvmz2y8VwdNgQ"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAxkBAAIC8GkkO4_XK3w-fG52q2Oy0ze8_6f5AALNigACC2whSUqvmz2y8VwdNgQ",
+            "skip": null
+          }
+        }
       },
       "8": {
-        "source": "BAACAgIAAxkBAAIC8mkkO5jQLbJVRXj0SPWO9CHLiwUeAALOigACC2whSfxA3xX4o_weNgQ"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAxkBAAIC8mkkO5jQLbJVRXj0SPWO9CHLiwUeAALOigACC2whSfxA3xX4o_weNgQ",
+            "skip": null
+          }
+        }
       }
     }
   },
@@ -47,64 +87,172 @@
     ],
     "episodes": {
       "1": {
-        "source": "BAACAgIAAxkDAAICuGkjWJupyvNj3K1EqJBtc15tTGajAAIqiAAC0E_RSDiNDuk9slE9NgQ"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAxkDAAICuGkjWJupyvNj3K1EqJBtc15tTGajAAIqiAAC0E_RSDiNDuk9slE9NgQ",
+            "skip": null
+          },
+          "AniDUB": {
+            "source": "BAACAgIAAxkDAAICuGkjWJupyvNj3K1EqJBtc15tTGajAAIqiAAC0E_RSDiNDuk9slE9NgQ",
+            "skip": null
+          }
+        }
       },
       "2": {
-        "source": "BAACAgIAAxkDAAICvGkjWKgiCvms1N-SL-bqYPErFktPAAIviAAC0E_RSPxJtnNeXZtINgQ"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAxkDAAICvGkjWKgiCvms1N-SL-bqYPErFktPAAIviAAC0E_RSPxJtnNeXZtINgQ",
+            "skip": null
+          },
+          "AniDUB": {
+            "source": "BAACAgIAAxkDAAICvGkjWKgiCvms1N-SL-bqYPErFktPAAIviAAC0E_RSPxJtnNeXZtINgQ",
+            "skip": "2:10"
+          }
+        }
       },
       "3": {
-        "source": "BAACAgIAAxkDAAICw2kkLhDpeXEAAZ5de0reD6VupdpTjAACOogAAtBP0Uhyh4xsysykzDYE"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAxkDAAICw2kkLhDpeXEAAZ5de0reD6VupdpTjAACOogAAtBP0Uhyh4xsysykzDYE",
+            "skip": null
+          }
+        }
       },
       "4": {
-        "source": "BAACAgIAAxkDAAICw2kkLhEVpJfenxp3vxnA3rfppnSKAAJWiAAC0E_RSOdsxn-Wg4sUNgQ"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAxkDAAICw2kkLhEVpJfenxp3vxnA3rfppnSKAAJWiAAC0E_RSOdsxn-Wg4sUNgQ",
+            "skip": null
+          }
+        }
       },
       "5": {
-        "source": "BAACAgIAAxkDAAICw2kkLhNf80hWxx-zzP8ETiqFG945AAJfiAAC0E_RSPgmA_eRnuKfNgQ"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAxkDAAICw2kkLhNf80hWxx-zzP8ETiqFG945AAJfiAAC0E_RSPgmA_eRnuKfNgQ",
+            "skip": null
+          }
+        }
       },
       "6": {
-        "source": "BAACAgIAAxkDAAIDQmkkUx9WeHGjpUS0e1vuvx2BsaZ7AAJniAAC0E_RSPiyqILZiXJtNgQ"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAxkDAAIDQmkkUx9WeHGjpUS0e1vuvx2BsaZ7AAJniAAC0E_RSPiyqILZiXJtNgQ",
+            "skip": null
+          }
+        }
       },
       "7": {
-        "source": "BAACAgIAAxkDAAIDQmkkUyFJa0Eyt2lNCOkFMoRHlmEpAAJ0iAAC0E_RSMbgHGNLAb9ENgQ"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAxkDAAIDQmkkUyFJa0Eyt2lNCOkFMoRHlmEpAAJ0iAAC0E_RSMbgHGNLAb9ENgQ",
+            "skip": null
+          }
+        }
       },
       "8": {
-        "source": "BAACAgIAAxkDAAICuGkjWK598kUdyQefGLedTrhXQeNAAAJ-iAAC0E_RSLIke7Ve4EY0NgQ"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAxkDAAICuGkjWK598kUdyQefGLedTrhXQeNAAAJ-iAAC0E_RSLIke7Ve4EY0NgQ",
+            "skip": null
+          }
+        }
       },
       "9": {
-        "source": "BAACAgIAAyEFAATIctaUAAMLaSRus9t0EllxDPBCuUzI7xuSFt0AAoGIAALQT9FIX9liNRs3OfE2BA"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAyEFAATIctaUAAMLaSRus9t0EllxDPBCuUzI7xuSFt0AAoGIAALQT9FIX9liNRs3OfE2BA",
+            "skip": null
+          }
+        }
       },
       "10": {
-        "source": "BAACAgIAAyEFAATIctaUAAMMaSRus23PqKT_ZSTyw1oRqISR6oUAAoyIAALQT9FIeTQspIdFdYM2BA"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAyEFAATIctaUAAMMaSRus23PqKT_ZSTyw1oRqISR6oUAAoyIAALQT9FIeTQspIdFdYM2BA",
+            "skip": null
+          }
+        }
       },
       "11": {
-        "source": "BAACAgIAAyEFAATIctaUAAMNaSRus__s0Oh_EzczhqRLsk0BWPwAAo2IAALQT9FI2lGl6qU_po02BA"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAyEFAATIctaUAAMNaSRus__s0Oh_EzczhqRLsk0BWPwAAo2IAALQT9FI2lGl6qU_po02BA",
+            "skip": null
+          }
+        }
       },
       "12": {
-        "source": "BAACAgIAAxkDAAICuGkjWKfcue2HyXKCVnWTJvTo1NzSAAKQiAAC0E_RSD5LbrkS6nUvNgQ"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAxkDAAICuGkjWKfcue2HyXKCVnWTJvTo1NzSAAKQiAAC0E_RSD5LbrkS6nUvNgQ",
+            "skip": null
+          }
+        }
       },
       "13": {
-        "source": "BAACAgIAAyEFAATIctaUAAMPaSRus9roN96cOMD-twzJGn5lSmEAApWIAALQT9FIxBDJjSitnsI2BA"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAyEFAATIctaUAAMPaSRus9roN96cOMD-twzJGn5lSmEAApWIAALQT9FIxBDJjSitnsI2BA",
+            "skip": null
+          }
+        }
       },
       "14": {
-        "source": "BAACAgIAAxkDAAICuGkjWKrtJkVvnZoGNA4WyrzXDZyDAAKkiAAC0E_RSAzuzSQ6ZRyYNgQ"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAxkDAAICuGkjWKrtJkVvnZoGNA4WyrzXDZyDAAKkiAAC0E_RSAzuzSQ6ZRyYNgQ",
+            "skip": null
+          }
+        }
       },
       "15": {
-        "source": "BAACAgIAAxkDAAIC1WkkMQNtQNfObNvjEQp-IhJfSAoEAAKuiAAC0E_RSJ62S68M_rrYNgQ"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAxkDAAIC1WkkMQNtQNfObNvjEQp-IhJfSAoEAAKuiAAC0E_RSJ62S68M_rrYNgQ",
+            "skip": null
+          }
+        }
       },
       "16": {
-        "source": "BAACAgIAAyEFAATIctaUAAMSaSRus19vO9kr9tzsUIu7Q_ptYmcAArqIAALQT9FIfF2kkgkJwx82BA"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAyEFAATIctaUAAMSaSRus19vO9kr9tzsUIu7Q_ptYmcAArqIAALQT9FIfF2kkgkJwx82BA",
+            "skip": null
+          }
+        }
       },
       "17": {
-        "source": "BAACAgIAAyEFAATIctaUAAMTaSRus4rvLR7zWMYbUkzOkDgIG4wAAsGIAALQT9FInueJ-tCzU7Y2BA"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAyEFAATIctaUAAMTaSRus4rvLR7zWMYbUkzOkDgIG4wAAsGIAALQT9FInueJ-tCzU7Y2BA",
+            "skip": null
+          }
+        }
       },
       "18": {
-        "source": "BAACAgIAAxkDAAICuGkjWKRZPXF5EtXRjvJmbXVvnwd2AALEiAAC0E_RSJQB19aj5RlWNgQ"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAxkDAAICuGkjWKRZPXF5EtXRjvJmbXVvnwd2AALEiAAC0E_RSJQB19aj5RlWNgQ",
+            "skip": null
+          }
+        }
       },
       "19": {
-        "source": "BAACAgIAAxkDAAICuGkjWJP3czdn1BmsIGni5ekBiDXJAAIFkAAC0E_ZSII3zt7YJHrYNgQ"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAxkDAAICuGkjWJP3czdn1BmsIGni5ekBiDXJAAIFkAAC0E_ZSII3zt7YJHrYNgQ",
+            "skip": null
+          }
+        }
       },
       "20": {
-        "source": "BAACAgIAAxkBAAICvWkkJXvdgQABfqZCK4ORx7nCVjODUwAClIkAAgtsIUmO-cMUGJ8nRzYE"
+        "tracks": {
+          "default": {
+            "source": "BAACAgIAAxkBAAICvWkkJXvdgQABfqZCK4ORx7nCVjODUwAClIkAAgtsIUmO-cMUGJ8nRzYE",
+            "skip": null
+          }
+        }
       }
     }
   }
