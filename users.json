@@ -2,7 +2,11 @@
   "progress": {
     "852405425": {
       "basnaboga": 1,
-      "basnaboga2": 1
+      "ga4iakyta": 1,
+      "sandad": 1
+    },
+    "710610332": {
+      "basnaboga": 1
     }
   },
   "favorites": {
@@ -18,7 +22,13 @@
   "current_track": {
     "852405425": {
       "basnaboga": "aniliberty",
-      "basnaboga2": "aniliberty"
+      "basnaboga2": "aniliberty",
+      "pridvornii": "default",
+      "ga4iakyta": "AniDUB",
+      "sandad": "Дубляжная"
+    },
+    "710610332": {
+      "basnaboga": "aniliberty"
     }
   }
 }

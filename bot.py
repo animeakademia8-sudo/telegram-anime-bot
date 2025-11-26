@@ -429,17 +429,59 @@ def build_genre_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-def build_anime_by_genre_keyboard(genre: str) -> InlineKeyboardMarkup:
-    keyboard = []
+# >>> PAGINATION: жанр + страница
+def build_anime_by_genre_keyboard(genre: str, page: int = 0, per_page: int = 10) -> InlineKeyboardMarkup:
+    # Собираем все тайтлы этого жанра
+    items: list[tuple[str, dict]] = []
     for slug, anime in ANIME.items():
         if genre in anime.get("genres", []):
-            title = anime["title"]
+            items.append((slug, anime))
+
+    # Сортируем по названию
+    items.sort(key=lambda x: x[1].get("title", "").lower())
+
+    keyboard: list[list[InlineKeyboardButton]] = []
+
+    if not items:
+        keyboard.append([InlineKeyboardButton("Ничего не найдено", callback_data="catalog")])
+    else:
+        total = len(items)
+        total_pages = (total + per_page - 1) // per_page
+        if page < 0:
+            page = 0
+        if page >= total_pages:
+            page = total_pages - 1
+
+        start = page * per_page
+        end = start + per_page
+        page_items = items[start:end]
+
+        for slug, anime in page_items:
+            title = anime.get("title", slug)
             status = anime.get("status", "ongoing")
             if status == "ongoing":
                 title = f"{title} [Онг.]"
             keyboard.append([InlineKeyboardButton(title, callback_data=f"anime:{slug}")])
-    if not keyboard:
-        keyboard.append([InlineKeyboardButton("Ничего не найдено", callback_data="catalog")])
+
+        # Кнопки пагинации
+        nav_row: list[InlineKeyboardButton] = []
+        if page > 0:
+            nav_row.append(
+                InlineKeyboardButton(
+                    "⬅️ Назад",
+                    callback_data=f"genre_page:{genre}:{page-1}",
+                )
+            )
+        if page < total_pages - 1:
+            nav_row.append(
+                InlineKeyboardButton(
+                    "➡️ Далее",
+                    callback_data=f"genre_page:{genre}:{page+1}",
+                )
+            )
+        if nav_row:
+            keyboard.append(nav_row)
+
     keyboard.append([InlineKeyboardButton("⬅️ Жанры", callback_data="catalog")])
     keyboard.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
     return InlineKeyboardMarkup(keyboard)
@@ -848,9 +890,9 @@ async def show_anime_list(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     SEARCH_MODE[chat_id] = False
 
 
-async def show_anime_by_genre(chat_id: int, context: ContextTypes.DEFAULT_TYPE, genre: str):
+async def show_anime_by_genre(chat_id: int, context: ContextTypes.DEFAULT_TYPE, genre: str, page: int = 0):
     caption = f"Жанр: {genre.capitalize()}\nВыбери аниме:"
-    kb = build_anime_by_genre_keyboard(genre)
+    kb = build_anime_by_genre_keyboard(genre, page=page)
     await edit_caption_only(chat_id, context, caption, kb)
     SEARCH_MODE[chat_id] = False
 
@@ -1066,7 +1108,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data.startswith("genre:"):
         genre = data.split(":", 1)[1]
-        await show_anime_by_genre(chat_id, context, genre)
+        await show_anime_by_genre(chat_id, context, genre, page=0)
+        return
+
+    # >>> PAGINATION callback: genre_page:<genre>:<page>
+    if data.startswith("genre_page:"):
+        _, genre, page_str = data.split(":", 2)
+        try:
+            page = int(page_str)
+        except ValueError:
+            page = 0
+        await show_anime_by_genre(chat_id, context, genre, page=page)
         return
 
     if data.startswith("anime:"):
