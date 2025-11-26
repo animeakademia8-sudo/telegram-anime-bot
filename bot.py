@@ -53,7 +53,7 @@ USER_WATCHED_TITLES: dict[int, set[str]] = {}
 # user_id -> {slug: track_name}  ТЕКУЩАЯ ОЗВУЧКА ДЛЯ ТАЙТЛА
 CURRENT_TRACK: dict[int, dict[str, str]] = {}
 
-# slug -> {title, genres, episodes{ep: {"tracks": {track_name: {source, skip}}}}}
+# slug -> {title, genres, status, episodes{ep: {"tracks": {track_name: {source, skip}}}}}
 ANIME: dict[str, dict] = {}
 
 
@@ -77,6 +77,7 @@ def load_anime() -> None:
         for slug, anime in data.items():
             title = anime.get("title", "")
             genres = anime.get("genres", [])
+            status = anime.get("status", "ongoing")  # по умолчанию считаем онгоингом
             episodes_raw = anime.get("episodes", {})
 
             episodes: dict[int, dict] = {}
@@ -126,6 +127,7 @@ def load_anime() -> None:
             fixed_data[slug] = {
                 "title": title,
                 "genres": genres,
+                "status": status,
                 "episodes": episodes,
             }
 
@@ -157,6 +159,7 @@ def save_anime() -> None:
             data_to_save[slug] = {
                 "title": anime.get("title", ""),
                 "genres": anime.get("genres", []),
+                "status": anime.get("status", "ongoing"),
                 "episodes": eps_json,
             }
 
@@ -297,7 +300,7 @@ def parse_caption_to_meta(caption: str) -> Optional[dict]:
         key, value = line.split(":", 1)
         key = key.strip().lower()
         value = value.strip()
-        if key in ("slug", "title", "ep", "genres", "skip", "ozv"):
+        if key in ("slug", "title", "ep", "genres", "skip", "ozv", "status"):
             data[key] = value
 
     if "slug" not in data or "title" not in data or "ep" not in data:
@@ -312,6 +315,12 @@ def parse_caption_to_meta(caption: str) -> Optional[dict]:
     if "genres" in data and data["genres"]:
         genres_list = [g.strip().lower() for g in data["genres"].split(",") if g.strip()]
 
+    status = data.get("status", "ongoing").lower()
+    if status not in ("ongoing", "finish", "finished", "completed"):
+        status = "ongoing"
+    if status in ("finished", "completed"):
+        status = "finish"
+
     return {
         "slug": data["slug"],
         "title": data["title"],
@@ -319,6 +328,7 @@ def parse_caption_to_meta(caption: str) -> Optional[dict]:
         "genres": genres_list,
         "skip": data.get("skip"),
         "ozv": data.get("ozv"),
+        "status": status,
     }
 
 
@@ -333,6 +343,7 @@ def add_or_update_anime_from_message(msg: Message) -> Optional[str]:
             "slug: ...\n"
             "title: ...\n"
             "ep: ...\n"
+            "[status: ongoing/finish]\n"
             "[ozv: ...]\n"
             "[skip: ...]\n"
             "[genres: ...]"
@@ -344,18 +355,21 @@ def add_or_update_anime_from_message(msg: Message) -> Optional[str]:
     genres = meta["genres"]
     skip = meta["skip"]
     ozv = meta["ozv"] or "default"
+    status = meta["status"]  # "ongoing" или "finish"
     file_id = msg.video.file_id
 
     if slug not in ANIME:
         ANIME[slug] = {
             "title": title,
             "genres": genres,
+            "status": status,
             "episodes": {},
         }
     else:
         ANIME[slug]["title"] = title
         if genres:
             ANIME[slug]["genres"] = genres
+        ANIME[slug]["status"] = status
 
     ANIME[slug].setdefault("episodes", {})
     ep_obj = ANIME[slug]["episodes"].setdefault(ep, {"tracks": {}})
@@ -368,7 +382,7 @@ def add_or_update_anime_from_message(msg: Message) -> Optional[str]:
 
     save_anime()
 
-    return f"✅ Обновлено: {title} (slug: {slug}), серия {ep}, озвучка: {ozv}"
+    return f"✅ Обновлено: {title} (slug: {slug}), серия {ep}, статус: {status}, озвучка: {ozv}"
 
 
 # ===============================
@@ -381,7 +395,10 @@ def build_main_menu_keyboard(chat_id: int) -> InlineKeyboardMarkup:
             InlineKeyboardButton("🎲 Случайное", callback_data="random"),
         ],
         [
+            InlineKeyboardButton("▶ Онгоинги", callback_data="ongoings"),
             InlineKeyboardButton("⭐ Продолжить", callback_data="continue"),
+        ],
+        [
             InlineKeyboardButton("🔍 Поиск", callback_data="search"),
         ],
         [
@@ -416,12 +433,30 @@ def build_anime_by_genre_keyboard(genre: str) -> InlineKeyboardMarkup:
     keyboard = []
     for slug, anime in ANIME.items():
         if genre in anime.get("genres", []):
-            keyboard.append([InlineKeyboardButton(anime["title"], callback_data=f"anime:{slug}")])
+            title = anime["title"]
+            status = anime.get("status", "ongoing")
+            if status == "ongoing":
+                title = f"{title} [Онг.]"
+            keyboard.append([InlineKeyboardButton(title, callback_data=f"anime:{slug}")])
     if not keyboard:
         keyboard.append([InlineKeyboardButton("Ничего не найдено", callback_data="catalog")])
     keyboard.append([InlineKeyboardButton("⬅️ Жанры", callback_data="catalog")])
     keyboard.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
     return InlineKeyboardMarkup(keyboard)
+
+
+def build_ongoings_keyboard() -> InlineKeyboardMarkup:
+    rows = []
+    for slug, anime in ANIME.items():
+        if anime.get("status", "ongoing") == "ongoing":
+            title = anime["title"] + " [Онг.]"
+            rows.append([InlineKeyboardButton(title, callback_data=f"anime:{slug}")])
+
+    if not rows:
+        rows.append([InlineKeyboardButton("Нет онгоингов", callback_data="menu")])
+
+    rows.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
+    return InlineKeyboardMarkup(rows)
 
 
 def build_tracks_keyboard(slug: str, ep: int, current_track: Optional[str]) -> list[list[InlineKeyboardButton]]:
@@ -545,7 +580,11 @@ def build_episode_list_keyboard(slug: str) -> InlineKeyboardMarkup:
 def build_anime_menu(chat_id: int) -> InlineKeyboardMarkup:
     keyboard = []
     for slug, anime in ANIME.items():
-        keyboard.append([InlineKeyboardButton(anime["title"], callback_data=f"anime:{slug}")])
+        title = anime["title"]
+        status = anime.get("status", "ongoing")
+        if status == "ongoing":
+            title = f"{title} [Онг.]"
+        keyboard.append([InlineKeyboardButton(title, callback_data=f"anime:{slug}")])
     if not keyboard:
         keyboard.append([InlineKeyboardButton("Пока нет аниме", callback_data="menu")])
     keyboard.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
@@ -556,7 +595,11 @@ def build_favorites_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     favs = USER_FAVORITES.get(chat_id, set())
     rows = []
     for slug in favs:
-        title = ANIME.get(slug, {}).get("title", slug)
+        anime = ANIME.get(slug, {})
+        title = anime.get("title", slug)
+        status = anime.get("status", "ongoing")
+        if status == "ongoing":
+            title = f"{title} [Онг.]"
         rows.append([InlineKeyboardButton(title, callback_data=f"anime:{slug}")])
     if not rows:
         rows = [[InlineKeyboardButton("Пусто", callback_data="menu")]]
@@ -568,7 +611,11 @@ def build_watched_titles_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     watched_titles = USER_WATCHED_TITLES.get(chat_id, set())
     rows = []
     for slug in sorted(watched_titles):
-        title = ANIME.get(slug, {}).get("title", slug)
+        anime = ANIME.get(slug, {})
+        title = anime.get("title", slug)
+        status = anime.get("status", "ongoing")
+        if status == "ongoing":
+            title = f"{title} [Онг.]"
         rows.append([InlineKeyboardButton(title, callback_data=f"anime:{slug}")])
     if not rows:
         rows = [[InlineKeyboardButton("Пусто", callback_data="menu")]]
@@ -586,7 +633,11 @@ def build_continue_keyboard(chat_id: int) -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(rows)
 
     for slug, ep in user_prog.items():
-        title = ANIME.get(slug, {}).get("title", slug)
+        anime = ANIME.get(slug, {})
+        title = anime.get("title", slug)
+        status = anime.get("status", "ongoing")
+        if status == "ongoing":
+            title = f"{title} [Онг.]"
         rows.append([
             InlineKeyboardButton(
                 f"{title} — с {ep} серии",
@@ -600,7 +651,11 @@ def build_continue_keyboard(chat_id: int) -> InlineKeyboardMarkup:
 
 def build_continue_item_keyboard(chat_id: int, slug: str) -> InlineKeyboardMarkup:
     ep = USER_PROGRESS.get(chat_id, {}).get(slug)
-    title = ANIME.get(slug, {}).get("title", slug)
+    anime = ANIME.get(slug, {})
+    title = anime.get("title", slug)
+    status = anime.get("status", "ongoing")
+    if status == "ongoing":
+        title = f"{title} [Онг.]"
 
     rows = []
 
@@ -785,6 +840,13 @@ async def show_anime_by_genre(chat_id: int, context: ContextTypes.DEFAULT_TYPE, 
     SEARCH_MODE[chat_id] = False
 
 
+async def show_ongoings(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
+    caption = "Онгоинги (ещё выходят):"
+    kb = build_ongoings_keyboard()
+    await edit_caption_only(chat_id, context, caption, kb)
+    SEARCH_MODE[chat_id] = False
+
+
 def _pick_track_for_episode(slug: str, ep: int, chat_id: int, track_name: Optional[str]) -> tuple[Optional[str], Optional[dict]]:
     """
     Возвращает (track_name, track_data) для серии.
@@ -845,7 +907,9 @@ async def show_episode(
     skip = track.get("skip")
 
     title = anime["title"]
-    caption_lines = [f"{title}\nСерия {ep}"]
+    status = anime.get("status", "ongoing")
+    status_label = "Онгоинг" if status == "ongoing" else "Завершён"
+    caption_lines = [f"{title} ({status_label})\nСерия {ep}"]
     if chosen_track_name:
         label = chosen_track_name if chosen_track_name != "default" else "Без названия"
         caption_lines.append(f"Озвучка: {label}")
@@ -867,7 +931,10 @@ async def show_episode_list(chat_id: int, context: ContextTypes.DEFAULT_TYPE, sl
     if not anime:
         await edit_caption_only(chat_id, context, "Аниме не найдено", build_main_menu_keyboard(chat_id))
         return
-    caption = f"{anime['title']}\nВыбери серию:"
+    title = anime['title']
+    status = anime.get("status", "ongoing")
+    status_label = "Онгоинг" if status == "ongoing" else "Завершён"
+    caption = f"{title} ({status_label})\nВыбери серию:"
     kb = build_episode_list_keyboard(slug)
     await edit_caption_only(chat_id, context, caption, kb)
     SEARCH_MODE[chat_id] = False
@@ -926,6 +993,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "random":
         await show_random(chat_id, context)
+        return
+
+    if data == "ongoings":
+        await show_ongoings(chat_id, context)
         return
 
     if data == "continue":

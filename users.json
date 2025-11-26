@@ -1,5 +1,10 @@
 {
-  "progress": {},
+  "progress": {
+    "852405425": {
+      "basnaboga": 1,
+      "basnaboga2": 1
+    }
+  },
   "favorites": {
     "852405425": [],
     "710610332": [],
@@ -10,5 +15,10 @@
     "852405425": [],
     "1983768215": []
   },
-  "current_track": {}
+  "current_track": {
+    "852405425": {
+      "basnaboga": "aniliberty",
+      "basnaboga2": "aniliberty"
+    }
+  }
 }

@@ -1,1 +1,164 @@
-{}
+{
+  "basnaboga": {
+    "title": "Башня бога",
+    "genres": [
+      "детектив",
+      "приключения",
+      "фэнтези",
+      "экшен",
+      "драма",
+      "по манхве"
+    ],
+    "episodes": {
+      "1": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAOOaScMmFsE1IQJ093QYLvjHOn1Z2YAAoGGAAJqB0BJpgRJRSD9Ypw2BA",
+            "skip": "3:25"
+          }
+        }
+      },
+      "2": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAOPaScM0Hi0PfD2BxGezVTzU3ZChCUAAoOGAAJqB0BJLo6sReuxVUc2BA",
+            "skip": "1:38"
+          }
+        }
+      },
+      "3": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAOQaScNj_c5i0Fth1J63wkKxoeaZRQAAoiGAAJqB0BJeNTmOmRZRBQ2BA",
+            "skip": "1:38"
+          }
+        }
+      },
+      "4": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAORaScNwZ9vf3e-gt4vfPd2fjV7ZtsAAouGAAJqB0BJuV5beHpVNuM2BA",
+            "skip": "1:38"
+          }
+        }
+      },
+      "5": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAOSaScONQX-s_vAWF6tkaPRpg_dm7EAAp6GAAJqB0BJFB3wmjNGkMo2BA",
+            "skip": "1:38"
+          }
+        }
+      },
+      "6": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAOTaScOYL2c1QtsVMTp-88uVYD1UtcAAqSGAAJqB0BJgInGHvurodQ2BA",
+            "skip": "1:38"
+          }
+        }
+      },
+      "7": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAOUaScO7McHRvOrpGq-WiHDu_Fz0RYAArWGAAJqB0BJkbhWZuZTJNo2BA",
+            "skip": "1:38"
+          }
+        }
+      },
+      "8": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAOVaScPXoCbGUei4hLHGC2qLRMOX4QAAsOGAAJqB0BJgCpa8zqxr_s2BA",
+            "skip": "1:38"
+          }
+        }
+      },
+      "9": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAOWaScPh6I2sOKl1hLcV5thE0_26UMAAsmGAAJqB0BJLM-MrQ2eItQ2BA",
+            "skip": "1:38"
+          }
+        }
+      },
+      "10": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAOXaScP7d7F525kHxvMh7MFfMYZ7ZcAAtaGAAJqB0BJYbpE_-ce9io2BA",
+            "skip": "1:38"
+          }
+        }
+      },
+      "11": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAOYaScQGAynIHMEpBUhGFJ-yjsQzywAAtqGAAJqB0BJMGqYP9Pjf5M2BA",
+            "skip": "1:38"
+          }
+        }
+      },
+      "12": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAOZaScQQjmpp8kbGnRLp4NPrqligC0AAuCGAAJqB0BJ-oPtEMFxpxw2BA",
+            "skip": "1:38"
+          }
+        }
+      },
+      "13": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAOaaScRdXWxjLmExaOgMsMM6-hupxwAAvSGAAJqB0BJb6EvImFZT-Q2BA",
+            "skip": null
+          }
+        }
+      }
+    }
+  },
+  "basnaboga2": {
+    "title": "Башня бога 2",
+    "genres": [
+      "детектив",
+      "приключения",
+      "фэнтези",
+      "экшен",
+      "драма",
+      "по манхве"
+    ],
+    "episodes": {
+      "1": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAOcaScS1BjMU79rLM2QRVEw4bK85XQAAgmHAAJqB0BJvc3Xtl8CQuE2BA",
+            "skip": "5:42"
+          }
+        }
+      },
+      "2": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAOdaScTHgs0x3kBzvHanuWD8ph-3rcAAg-HAAJqB0BJ29X9oW-psQs2BA",
+            "skip": "4:31"
+          }
+        }
+      },
+      "3": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAOeaScTZK9aiedn8XqGa15guUJDqa4AAhaHAAJqB0BJ0FCA3mdfh7k2BA",
+            "skip": "7:02"
+          }
+        }
+      },
+      "4": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAOfaScUq_rjeTWm08d1AcWXfAJBKU4AAkOHAAJqB0BJTzuGE9pMWAo2BA",
+            "skip": "4:35"
+          }
+        }
+      }
+    }
+  }
+}
