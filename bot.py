@@ -50,7 +50,7 @@ USER_FAVORITES: dict[int, set[str]] = {}
 # user_id -> set(slug)  # ТАЙТЛЫ, которые отмечены как "просмотренные"
 USER_WATCHED_TITLES: dict[int, set[str]] = {}
 
-# slug -> {title, genres, episodes{ep: {source}}}
+# slug -> {title, genres, episodes{ep: {"tracks": {track_name: {source, skip}}}}}
 ANIME: dict[str, dict] = {}
 
 
@@ -58,6 +58,10 @@ ANIME: dict[str, dict] = {}
 # JSON SAVE/LOAD: ANIME
 # ===============================
 def load_anime() -> None:
+    """
+    Грузим старый или новый формат и конвертим в новый:
+    episodes[ep] = {"tracks": {track_name: {"source": ..., "skip": ...}}}
+    """
     global ANIME
     if not os.path.exists(ANIME_JSON_PATH):
         ANIME = {}
@@ -65,17 +69,64 @@ def load_anime() -> None:
     try:
         with open(ANIME_JSON_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
+
+        fixed_data = {}
         for slug, anime in data.items():
-            episodes = anime.get("episodes", {})
-            fixed_eps = {}
-            for ep_str, ep_data in episodes.items():
+            title = anime.get("title", "")
+            genres = anime.get("genres", [])
+            episodes_raw = anime.get("episodes", {})
+
+            episodes: dict[int, dict] = {}
+            for ep_str, ep_data in episodes_raw.items():
                 try:
                     ep_int = int(ep_str)
                 except ValueError:
                     continue
-                fixed_eps[ep_int] = ep_data
-            anime["episodes"] = fixed_eps
-        ANIME = data
+
+                # Новый формат или старый?
+                if isinstance(ep_data, dict) and "tracks" in ep_data:
+                    # Уже новый формат
+                    tracks = ep_data.get("tracks", {})
+                    # Нормализуем треки: ensure dict with source/skip
+                    norm_tracks = {}
+                    for tname, tdata in tracks.items():
+                        if isinstance(tdata, dict):
+                            source = tdata.get("source")
+                            skip = tdata.get("skip")
+                        else:
+                            # если вдруг хранили просто строку
+                            source = tdata
+                            skip = None
+                        if source:
+                            norm_tracks[tname] = {"source": source, "skip": skip}
+                    if norm_tracks:
+                        episodes[ep_int] = {"tracks": norm_tracks}
+                else:
+                    # Старый формат:
+                    # может быть {"source": "...", "skip": "...", "ozv": "..."} или просто {"source": "..."}
+                    if not isinstance(ep_data, dict):
+                        continue
+                    source = ep_data.get("source")
+                    if not source:
+                        continue
+                    skip = ep_data.get("skip")
+                    ozv = ep_data.get("ozv") or "default"
+                    episodes[ep_int] = {
+                        "tracks": {
+                            ozv: {
+                                "source": source,
+                                "skip": skip,
+                            }
+                        }
+                    }
+
+            fixed_data[slug] = {
+                "title": title,
+                "genres": genres,
+                "episodes": episodes,
+            }
+
+        ANIME = fixed_data
         print(f"Loaded ANIME from {ANIME_JSON_PATH}, items:", len(ANIME))
     except Exception as e:
         print("Failed to load anime.json:", e)
@@ -89,7 +140,17 @@ def save_anime() -> None:
             episodes = anime.get("episodes", {})
             eps_json = {}
             for ep_int, ep_data in episodes.items():
-                eps_json[str(ep_int)] = ep_data
+                ep_obj = {}
+                # сохраняем в новом формате
+                tracks = ep_data.get("tracks", {})
+                ep_obj["tracks"] = {}
+                for tname, tinfo in tracks.items():
+                    ep_obj["tracks"][tname] = {
+                        "source": tinfo.get("source"),
+                        "skip": tinfo.get("skip"),
+                    }
+                eps_json[str(ep_int)] = ep_obj
+
             data_to_save[slug] = {
                 "title": anime.get("title", ""),
                 "genres": anime.get("genres", []),
@@ -211,7 +272,7 @@ def parse_caption_to_meta(caption: str) -> Optional[dict]:
         key, value = line.split(":", 1)
         key = key.strip().lower()
         value = value.strip()
-        if key in ("slug", "title", "ep", "genres"):
+        if key in ("slug", "title", "ep", "genres", "skip", "ozv"):
             data[key] = value
 
     if "slug" not in data or "title" not in data or "ep" not in data:
@@ -231,6 +292,8 @@ def parse_caption_to_meta(caption: str) -> Optional[dict]:
         "title": data["title"],
         "ep": ep_num,
         "genres": genres_list,
+        "skip": data.get("skip"),
+        "ozv": data.get("ozv"),
     }
 
 
@@ -240,12 +303,22 @@ def add_or_update_anime_from_message(msg: Message) -> Optional[str]:
 
     meta = parse_caption_to_meta(msg.caption or "")
     if not meta:
-        return "❌ Подпись не в нужном формате. Нужны строки:\nslug: ...\ntitle: ...\nep: ...\n[genres: ...]"
+        return (
+            "❌ Подпись не в нужном формате. Нужны строки:\n"
+            "slug: ...\n"
+            "title: ...\n"
+            "ep: ...\n"
+            "[ozv: ...]\n"
+            "[skip: ...]\n"
+            "[genres: ...]"
+        )
 
     slug = meta["slug"]
     title = meta["title"]
     ep = meta["ep"]
     genres = meta["genres"]
+    skip = meta["skip"]
+    ozv = meta["ozv"] or "default"
     file_id = msg.video.file_id
 
     if slug not in ANIME:
@@ -260,11 +333,17 @@ def add_or_update_anime_from_message(msg: Message) -> Optional[str]:
             ANIME[slug]["genres"] = genres
 
     ANIME[slug].setdefault("episodes", {})
-    ANIME[slug]["episodes"][ep] = {"source": file_id}
+    ep_obj = ANIME[slug]["episodes"].setdefault(ep, {"tracks": {}})
+    tracks = ep_obj.setdefault("tracks", {})
+
+    tracks[ozv] = {
+        "source": file_id,
+        "skip": skip,
+    }
 
     save_anime()
 
-    return f"✅ Обновлено: {title} (slug: {slug}), серия {ep}"
+    return f"✅ Обновлено: {title} (slug: {slug}), серия {ep}, озвучка: {ozv}"
 
 
 # ===============================
@@ -320,7 +399,41 @@ def build_anime_by_genre_keyboard(genre: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
-def build_episode_keyboard(slug: str, ep: int, chat_id: int) -> InlineKeyboardMarkup:
+def build_tracks_keyboard(slug: str, ep: int, current_track: Optional[str]) -> list[list[InlineKeyboardButton]]:
+    """
+    Кнопки выбора озвучки (если больше одной).
+    """
+    anime = ANIME.get(slug)
+    if not anime:
+        return []
+    ep_obj = anime["episodes"].get(ep)
+    if not ep_obj:
+        return []
+    tracks = ep_obj.get("tracks", {})
+    if len(tracks) <= 1:
+        return []
+
+    rows = []
+    for tname in sorted(tracks.keys()):
+        label = tname
+        if label == "default":
+            label = "Без названия"
+        prefix = "✅" if tname == current_track else "🎧"
+        btn_text = f"{prefix} {label}"
+        # Экранируем ":" в имени озвучки, заменяя на специальную последовательность
+        safe_tname = tname.replace(":", "__colon__")
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    btn_text,
+                    callback_data=f"track:{slug}:{ep}:{safe_tname}",
+                )
+            ]
+        )
+    return rows
+
+
+def build_episode_keyboard(slug: str, ep: int, chat_id: int, current_track: Optional[str]) -> InlineKeyboardMarkup:
     episodes = ANIME[slug]["episodes"]
     has_prev = (ep - 1) in episodes
     has_next = (ep + 1) in episodes
@@ -349,13 +462,18 @@ def build_episode_keyboard(slug: str, ep: int, chat_id: int) -> InlineKeyboardMa
             callback_data=f"watch_title:{slug}",
         )
 
-    rows = [
+    rows: list[list[InlineKeyboardButton]] = [
         [
             InlineKeyboardButton("📺 Серии", callback_data=f"list:{slug}"),
         ],
         [fav_button],
         [watched_button],
     ]
+
+    # Кнопки выбора озвучки (если есть несколько)
+    track_rows = build_tracks_keyboard(slug, ep, current_track)
+    rows.extend(track_rows)
+
     if nav:
         rows.append(nav)
     rows.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
@@ -420,9 +538,7 @@ def build_continue_keyboard(chat_id: int) -> InlineKeyboardMarkup:
         rows.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
         return InlineKeyboardMarkup(rows)
 
-    # просто аккуратно идём по slug'ам (не меняя структуру данных)
-    for slug in sorted(user_prog.keys()):
-        ep = user_prog[slug]
+    for slug, ep in user_prog.items():
         title = ANIME.get(slug, {}).get("title", slug)
         rows.append([
             InlineKeyboardButton(
@@ -465,27 +581,6 @@ def build_continue_item_keyboard(chat_id: int, slug: str) -> InlineKeyboardMarku
     ])
 
     return InlineKeyboardMarkup(rows)
-
-
-def build_search_results_keyboard(matches: list[tuple[str, str]]) -> InlineKeyboardMarkup:
-    """
-    matches: list of (slug, title)
-    """
-    rows = [
-        [InlineKeyboardButton(title, callback_data=f"anime:{slug}")]
-        for slug, title in matches
-    ]
-    rows.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
-    return InlineKeyboardMarkup(rows)
-
-
-def build_search_keyboard() -> InlineKeyboardMarkup:
-    """
-    Клавиатура для режима поиска: минимализм, только возврат в меню.
-    """
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🍄 Меню", callback_data="menu")]
-    ])
 
 
 # ===============================
@@ -616,12 +711,7 @@ async def edit_caption_only(
 # SCREENS
 # ===============================
 async def show_main_menu(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
-    caption = (
-        "Приятного просмотра ✨\n"
-        "Все управление через кнопки ниже.\n\n"
-        "🔍 Чтобы найти аниме — нажми «Поиск» и напиши его название.\n"
-        "💬 Я удаляю текстовые сообщения и реагирую только на кнопки — так в чате меньше мусора."
-    )
+    caption = "Приятного просмотра ✨\nВсе управление через кнопки ниже."
     kb = build_main_menu_keyboard(chat_id)
     await send_or_edit_photo(chat_id, context, WELCOME_PHOTO, caption, kb)
     SEARCH_MODE[chat_id] = False
@@ -648,37 +738,63 @@ async def show_anime_by_genre(chat_id: int, context: ContextTypes.DEFAULT_TYPE, 
     SEARCH_MODE[chat_id] = False
 
 
-async def show_episode(chat_id: int, context: ContextTypes.DEFAULT_TYPE, slug: str, ep: int):
+def _pick_track_for_episode(slug: str, ep: int, track_name: Optional[str]) -> tuple[Optional[str], Optional[dict]]:
+    """
+    Возвращает (track_name, track_data) для серии.
+    Если track_name не задан или не найден — берём первую доступную.
+    """
     anime = ANIME.get(slug)
     if not anime:
-        # пункт 5: чистим прогресс, если тайтл пропал
-        if chat_id in USER_PROGRESS and slug in USER_PROGRESS[chat_id]:
-            del USER_PROGRESS[chat_id][slug]
-            if not USER_PROGRESS[chat_id]:
-                del USER_PROGRESS[chat_id]
-            save_users()
+        return None, None
+    ep_obj = anime["episodes"].get(ep)
+    if not ep_obj:
+        return None, None
+    tracks = ep_obj.get("tracks", {})
+    if not tracks:
+        return None, None
 
-        await edit_caption_only(
-            chat_id,
-            context,
-            "Аниме не найдено. Возможно, оно было удалено или переименовано.",
-            build_main_menu_keyboard(chat_id),
-        )
+    if track_name and track_name in tracks:
+        return track_name, tracks[track_name]
+
+    # Берём первую дорожку
+    first_name = next(iter(tracks.keys()))
+    return first_name, tracks[first_name]
+
+
+async def show_episode(
+    chat_id: int,
+    context: ContextTypes.DEFAULT_TYPE,
+    slug: str,
+    ep: int,
+    track_name: Optional[str] = None,
+):
+    anime = ANIME.get(slug)
+    if not anime:
+        await edit_caption_only(chat_id, context, "Аниме не найдено", build_main_menu_keyboard(chat_id))
+        return
+    if ep not in anime["episodes"]:
+        await edit_caption_only(chat_id, context, "Такой серии нет", build_main_menu_keyboard(chat_id))
         return
 
-    episode = anime["episodes"].get(ep)
-    if not episode:
-        await edit_caption_only(
-            chat_id,
-            context,
-            "Такой серии нет. Возможно, она была удалена.",
-            build_main_menu_keyboard(chat_id),
-        )
+    chosen_track_name, track = _pick_track_for_episode(slug, ep, track_name)
+    if not track:
+        await edit_caption_only(chat_id, context, "Нет доступных дорожек для этой серии.", build_main_menu_keyboard(chat_id))
         return
 
-    caption = f"{anime['title']}\nСерия {ep}"
-    kb = build_episode_keyboard(slug, ep, chat_id)
-    await send_or_edit_video(chat_id, context, episode["source"], caption, kb)
+    source = track.get("source")
+    skip = track.get("skip")
+
+    title = anime["title"]
+    caption_lines = [f"{title}\nСерия {ep}"]
+    if chosen_track_name:
+        label = chosen_track_name if chosen_track_name != "default" else "Без названия"
+        caption_lines.append(f"Озвучка: {label}")
+    if skip:
+        caption_lines.append(f"⏩ Пропустить опенинг: {skip}")
+    caption = "\n".join(caption_lines)
+
+    kb = build_episode_keyboard(slug, ep, chat_id, chosen_track_name)
+    await send_or_edit_video(chat_id, context, source, caption, kb)
 
     USER_PROGRESS.setdefault(chat_id, {})
     USER_PROGRESS[chat_id][slug] = ep
@@ -702,7 +818,12 @@ async def show_random(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
         await edit_caption_only(chat_id, context, "Пока нет доступных аниме 😔", build_main_menu_keyboard(chat_id))
         return
     slug = random.choice(list(ANIME.keys()))
-    await show_episode(chat_id, context, slug, 1)
+    # Выбираем первую серию
+    eps = sorted(ANIME[slug]["episodes"].keys())
+    if not eps:
+        await edit_caption_only(chat_id, context, "Нет серий у этого тайтла 😔", build_main_menu_keyboard(chat_id))
+        return
+    await show_episode(chat_id, context, slug, eps[0])
 
 
 async def show_favorites(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
@@ -713,10 +834,7 @@ async def show_favorites(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def show_watched_titles(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
-    caption = (
-        "Просмотренные тайтлы:\n"
-        "Здесь появляются тайтлы, которые ты отметил как полностью просмотренные 👁"
-    )
+    caption = "Просмотренные тайтлы:"
     kb = build_watched_titles_keyboard(chat_id)
     await edit_caption_only(chat_id, context, caption, kb)
     SEARCH_MODE[chat_id] = False
@@ -788,11 +906,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "search":
         SEARCH_MODE[chat_id] = True
-        caption = (
-            "🔍 Введи название аниме сообщением (или его часть).\n"
-            "(Текст потом удалю, реагирую только на кнопки)"
-        )
-        await edit_caption_only(chat_id, context, caption, build_search_keyboard())
+        caption = "🔍 Введи название аниме сообщением (или его часть).\n(Текст потом удалю, реагирую только на кнопки)"
+        await edit_caption_only(chat_id, context, caption, build_main_menu_keyboard(chat_id))
         return
 
     if data == "favorites":
@@ -810,7 +925,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data.startswith("anime:"):
         slug = data.split(":", 1)[1]
-        await show_episode(chat_id, context, slug, 1)
+        # первая серия
+        anime = ANIME.get(slug)
+        if not anime or not anime.get("episodes"):
+            await edit_caption_only(chat_id, context, "У этого тайтла ещё нет серий.", build_main_menu_keyboard(chat_id))
+            return
+        first_ep = sorted(anime["episodes"].keys())[0]
+        await show_episode(chat_id, context, slug, first_ep)
         return
 
     if data.startswith("list:"):
@@ -840,8 +961,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         slug = data.split(":", 1)[1]
         USER_FAVORITES.setdefault(chat_id, set()).add(slug)
         save_users()
-        await query.answer("Добавлено в избранное.")
-        ep = USER_PROGRESS.get(chat_id, {}).get(slug, 1)
+        ep = USER_PROGRESS.get(chat_id, {}).get(slug)
+        if ep is None:
+            anime = ANIME.get(slug)
+            if anime and anime.get("episodes"):
+                ep = sorted(anime["episodes"].keys())[0]
+            else:
+                ep = 1
         await show_episode(chat_id, context, slug, ep)
         return
 
@@ -849,8 +975,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         slug = data.split(":", 1)[1]
         USER_FAVORITES.setdefault(chat_id, set()).discard(slug)
         save_users()
-        await query.answer("Убрано из избранного.")
-        ep = USER_PROGRESS.get(chat_id, {}).get(slug, 1)
+        ep = USER_PROGRESS.get(chat_id, {}).get(slug)
+        if ep is None:
+            anime = ANIME.get(slug)
+            if anime and anime.get("episodes"):
+                ep = sorted(anime["episodes"].keys())[0]
+            else:
+                ep = 1
         await show_episode(chat_id, context, slug, ep)
         return
 
@@ -858,8 +989,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         slug = data.split(":", 1)[1]
         USER_WATCHED_TITLES.setdefault(chat_id, set()).add(slug)
         save_users()
-        await query.answer("Тайтл отмечен как просмотренный.")
-        ep = USER_PROGRESS.get(chat_id, {}).get(slug, 1)
+        ep = USER_PROGRESS.get(chat_id, {}).get(slug)
+        if ep is None:
+            anime = ANIME.get(slug)
+            if anime and anime.get("episodes"):
+                ep = sorted(anime["episodes"].keys())[0]
+            else:
+                ep = 1
         await show_episode(chat_id, context, slug, ep)
         return
 
@@ -867,9 +1003,22 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         slug = data.split(":", 1)[1]
         USER_WATCHED_TITLES.setdefault(chat_id, set()).discard(slug)
         save_users()
-        await query.answer("С тайтла снята отметка просмотренного.")
-        ep = USER_PROGRESS.get(chat_id, {}).get(slug, 1)
+        ep = USER_PROGRESS.get(chat_id, {}).get(slug)
+        if ep is None:
+            anime = ANIME.get(slug)
+            if anime and anime.get("episodes"):
+                ep = sorted(anime["episodes"].keys())[0]
+            else:
+                ep = 1
         await show_episode(chat_id, context, slug, ep)
+        return
+
+    if data.startswith("track:"):
+        # формат: track:slug:ep:track_name_escaped
+        _, slug, ep_str, safe_tname = data.split(":", 3)
+        ep = int(ep_str)
+        track_name = safe_tname.replace("__colon__", ":")
+        await show_episode(chat_id, context, slug, ep, track_name=track_name)
         return
 
 
@@ -891,12 +1040,11 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     q = text.lower()
-    matches: list[tuple[str, str]] = []
-
+    found_slug = None
     for slug, anime in ANIME.items():
-        title = anime.get("title", "")
-        if q in title.lower():
-            matches.append((slug, title))
+        if q in anime["title"].lower():
+            found_slug = slug
+            break
 
     # Удаляем сообщение с текстом поиска
     try:
@@ -904,7 +1052,7 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         pass
 
-    if not matches:
+    if not found_slug:
         await edit_caption_only(
             chat_id,
             context,
@@ -914,20 +1062,15 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         SEARCH_MODE[chat_id] = False
         return
 
-    if len(matches) == 1:
-        slug = matches[0][0]
-        await show_episode(chat_id, context, slug, 1)
+    # первая серия найденного тайтла
+    anime = ANIME.get(found_slug)
+    if not anime or not anime.get("episodes"):
+        await edit_caption_only(chat_id, context, "У этого тайтла ещё нет серий.", build_main_menu_keyboard(chat_id))
         SEARCH_MODE[chat_id] = False
         return
 
-    # Если найдено несколько тайтлов — показывает список
-    kb = build_search_results_keyboard(matches)
-    await edit_caption_only(
-        chat_id,
-        context,
-        "Нашёл несколько тайтлов, выбери нужный:",
-        kb,
-    )
+    first_ep = sorted(anime["episodes"].keys())[0]
+    await show_episode(chat_id, context, found_slug, first_ep)
     SEARCH_MODE[chat_id] = False
 
 
@@ -999,7 +1142,7 @@ async def cmd_fix(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif target.chat:
         from_chat_id = target.chat.id
 
-    if from_chat_id != SOURCE_CHAT_ID and msg.from_user.id != ADMIN_ID:
+    if from_chat_id != SOURCE_CHAT_ID:
         await msg.reply_text("❌ Это сообщение не из SOURCE_CHAT_ID. Перешли боту серию из нужного чата.")
         return
 
@@ -1133,4 +1276,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
