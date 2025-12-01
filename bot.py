@@ -636,7 +636,7 @@ def build_tracks_keyboard(slug: str, ep: int, current_track: Optional[str]) -> l
 def build_episode_keyboard(slug: str, ep: int, chat_id: int, current_track: Optional[str]) -> InlineKeyboardMarkup:
     episodes = ANIME[slug]["episodes"]
 
-    # определяем выбранную озвучку из CURRENT_TRACK, если не передали
+    # определяем выбранню озвучку из CURRENT_TRACK, если не передали
     user_tracks = CURRENT_TRACK.get(chat_id, {})
     stored_track = user_tracks.get(slug)
     if stored_track:
