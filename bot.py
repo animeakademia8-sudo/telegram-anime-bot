@@ -63,7 +63,7 @@ ANIME: dict[str, dict] = {}
 # ===============================
 def load_anime() -> None:
     """
-    Грузим старый или новый формат и конвертим в новый:
+    Грузим старый или новый формат и конверим в новый:
     episodes[ep] = {"tracks": {track_name: {"source": ..., "skip": ...}}}
     """
     global ANIME
