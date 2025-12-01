@@ -283,7 +283,7 @@ def load_users() -> None:
             try:
                 user_id = int(user_id_str)
             except ValueError:
-               	continue
+                continue
             if isinstance(fav_list, list):
                 USER_FAVORITES[user_id] = set(
                     [slug for slug in fav_list if isinstance(slug, str)]
@@ -748,20 +748,61 @@ def build_favorites_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-def build_watched_titles_keyboard(chat_id: int) -> InlineKeyboardMarkup:
-    watched_titles = USER_WATCHED_TITLES.get(chat_id, set())
-    rows = []
-    for slug in sorted(watched_titles):
+# --- НОВОЕ: просмотренное с пагинацией ---
+def build_watched_titles_paged_keyboard(
+    chat_id: int,
+    page: int = 0,
+    per_page: int = 10,
+) -> InlineKeyboardMarkup:
+    watched_titles = sorted(USER_WATCHED_TITLES.get(chat_id, set()))
+    keyboard: list[list[InlineKeyboardButton]] = []
+
+    if not watched_titles:
+        keyboard.append([InlineKeyboardButton("Пусто", callback_data="menu")])
+        keyboard.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
+        return InlineKeyboardMarkup(keyboard)
+
+    total = len(watched_titles)
+    total_pages = (total + per_page - 1) // per_page
+
+    if page < 0:
+        page = 0
+    if page >= total_pages:
+        page = total_pages - 1
+
+    start = page * per_page
+    end = start + per_page
+    page_items = watched_titles[start:end]
+
+    for slug in page_items:
         anime = ANIME.get(slug, {})
         title = anime.get("title", slug)
         status = anime.get("status", "ongoing")
         if status == "ongoing":
             title = f"{title} [Онг.]"
-        rows.append([InlineKeyboardButton(title, callback_data=f"anime:{slug}")])
-    if not rows:
-        rows = [[InlineKeyboardButton("Пусто", callback_data="menu")]]
-    rows.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
-    return InlineKeyboardMarkup(rows)
+        keyboard.append([InlineKeyboardButton(title, callback_data=f"anime:{slug}")])
+
+    # Пагинация
+    nav_row: list[InlineKeyboardButton] = []
+    if page > 0:
+        nav_row.append(
+            InlineKeyboardButton(
+                "⬅️ Назад",
+                callback_data=f"watched_page:{page-1}",
+            )
+        )
+    if page < total_pages - 1:
+        nav_row.append(
+            InlineKeyboardButton(
+                "➡️ Далее",
+                callback_data=f"watched_page:{page+1}",
+            )
+        )
+    if nav_row:
+        keyboard.append(nav_row)
+
+    keyboard.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
+    return InlineKeyboardMarkup(keyboard)
 
 
 def build_continue_keyboard(chat_id: int) -> InlineKeyboardMarkup:
@@ -851,30 +892,23 @@ async def send_or_edit_photo(
     caption: str,
     reply_markup: InlineKeyboardMarkup,
 ):
-    """
-    Безопасная отправка фото:
-    - если картинки нет, не падаем, а просто редачим/шлём текст.
-    """
-    # выберем реальный путь к картинке, если есть
-    use_path = None
-    if photo_path and os.path.exists(photo_path):
-        use_path = photo_path
-    elif WELCOME_PHOTO and os.path.exists(WELCOME_PHOTO):
-        use_path = WELCOME_PHOTO
-
     msg_id = LAST_MESSAGE.get(chat_id)
-
-    # если нет ни одной картинки — работаем только с текстом
-    if not use_path:
+    # пробуем отправить/отредактировать картинку; если файла нет — fallback на текст
+    if os.path.exists(photo_path):
         if msg_id:
             try:
-                await context.bot.edit_message_caption(
+                with open(photo_path, "rb") as ph:
+                    await context.bot.edit_message_media(
+                        media=InputMediaPhoto(media=ph, caption=caption),
+                        chat_id=chat_id,
+                        message_id=msg_id,
+                    )
+                await context.bot.edit_message_reply_markup(
                     chat_id=chat_id,
                     message_id=msg_id,
-                    caption=caption,
                     reply_markup=reply_markup,
                 )
-                LAST_MESSAGE_TYPE[chat_id] = "text"
+                LAST_MESSAGE_TYPE[chat_id] = "photo"
                 return msg_id
             except Exception:
                 try:
@@ -882,47 +916,19 @@ async def send_or_edit_photo(
                 except Exception:
                     pass
 
-        sent = await context.bot.send_message(
-            chat_id=chat_id,
-            text=caption,
-            reply_markup=reply_markup,
-        )
-        LAST_MESSAGE[chat_id] = sent.message_id
-        LAST_MESSAGE_TYPE[chat_id] = "text"
-        return sent.message_id
-
-    # если картинка есть — пробуем редактировать / отправить фото
-    if msg_id:
-        try:
-            with open(use_path, "rb") as ph:
-                await context.bot.edit_message_media(
-                    media=InputMediaPhoto(media=ph, caption=caption),
-                    chat_id=chat_id,
-                    message_id=msg_id,
-                )
-            await context.bot.edit_message_reply_markup(
+        with open(photo_path, "rb") as ph:
+            sent = await context.bot.send_photo(
                 chat_id=chat_id,
-                message_id=msg_id,
+                photo=ph,
+                caption=caption,
                 reply_markup=reply_markup,
             )
-            LAST_MESSAGE_TYPE[chat_id] = "photo"
-            return msg_id
-        except Exception:
-            try:
-                await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
-            except Exception:
-                pass
+        LAST_MESSAGE[chat_id] = sent.message_id
+        LAST_MESSAGE_TYPE[chat_id] = "photo"
+        return sent.message_id
 
-    with open(use_path, "rb") as ph:
-        sent = await context.bot.send_photo(
-            chat_id=chat_id,
-            photo=ph,
-            caption=caption,
-            reply_markup=reply_markup,
-        )
-    LAST_MESSAGE[chat_id] = sent.message_id
-    LAST_MESSAGE_TYPE[chat_id] = "photo"
-    return sent.message_id
+    # если картинки нет — просто редактируем/шлём текст
+    return await edit_caption_only(chat_id, context, caption, reply_markup)
 
 
 async def send_or_edit_video(
@@ -971,21 +977,29 @@ async def edit_caption_only(
     caption: str,
     reply_markup: Optional[InlineKeyboardMarkup] = None,
 ):
-    """
-    Безопасно редактируем подпись:
-    - если исходное сообщение было с фото и оно пропало, используем send_or_edit_photo,
-      который сам решает, есть ли картинка или только текст.
-    """
     msg_id = LAST_MESSAGE.get(chat_id)
     if not msg_id:
-        # просто выводим как "экран" через send_or_edit_photo (она сама решит: есть картинка или нет)
-        return await send_or_edit_photo(
-            chat_id,
-            context,
-            WELCOME_PHOTO,
-            caption,
-            reply_markup or build_main_menu_keyboard(chat_id),
-        )
+        # Пытаемся с приветственной картинкой, если нет — просто текст
+        if os.path.exists(WELCOME_PHOTO):
+            with open(WELCOME_PHOTO, "rb") as ph:
+                sent = await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=ph,
+                    caption=caption,
+                    reply_markup=reply_markup or build_main_menu_keyboard(chat_id),
+                )
+            LAST_MESSAGE[chat_id] = sent.message_id
+            LAST_MESSAGE_TYPE[chat_id] = "photo"
+            return sent.message_id
+        else:
+            sent = await context.bot.send_message(
+                chat_id=chat_id,
+                text=caption,
+                reply_markup=reply_markup or build_main_menu_keyboard(chat_id),
+            )
+            LAST_MESSAGE[chat_id] = sent.message_id
+            LAST_MESSAGE_TYPE[chat_id] = "text"
+            return sent.message_id
 
     try:
         await context.bot.edit_message_caption(
@@ -1000,14 +1014,28 @@ async def edit_caption_only(
             await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
         except Exception:
             pass
-        # fallback — снова через send_or_edit_photo (с проверкой на наличие файлов)
-        return await send_or_edit_photo(
-            chat_id,
-            context,
-            WELCOME_PHOTO,
-            caption,
-            reply_markup or build_main_menu_keyboard(chat_id),
-        )
+
+        # если не получилось отредактировать, отправляем новое
+        if os.path.exists(WELCOME_PHOTO):
+            with open(WELCOME_PHOTO, "rb") as ph:
+                sent = await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=ph,
+                    caption=caption,
+                    reply_markup=reply_markup or build_main_menu_keyboard(chat_id),
+                )
+            LAST_MESSAGE[chat_id] = sent.message_id
+            LAST_MESSAGE_TYPE[chat_id] = "photo"
+            return sent.message_id
+        else:
+            sent = await context.bot.send_message(
+                chat_id=chat_id,
+                text=caption,
+                reply_markup=reply_markup or build_main_menu_keyboard(chat_id),
+            )
+            LAST_MESSAGE[chat_id] = sent.message_id
+            LAST_MESSAGE_TYPE[chat_id] = "text"
+            return sent.message_id
 
 
 # ===============================
@@ -1161,15 +1189,37 @@ async def show_favorites(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     SEARCH_MODE[chat_id] = False
 
 
-async def show_watched_titles(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
-    caption = "Просмотренные тайтлы:"
-    kb = build_watched_titles_keyboard(chat_id)
-    await edit_caption_only(chat_id, context, caption, kb)
+# --- НОВОЕ: просмотренное с рангом и страницами ---
+async def show_watched_with_rank_paged(
+    chat_id: int,
+    context: ContextTypes.DEFAULT_TYPE,
+    page: int = 0,
+):
+    watched_titles = USER_WATCHED_TITLES.get(chat_id, set())
+    count = len(watched_titles)
+
+    header = f"👁 Просмотренные тайтлы: {count}\n\n"
+
+    achievement = get_achievement_for_count(count)
+    if achievement:
+        img_path, text = achievement
+        caption = header + text + "\n\n📜 Список просмотренного ниже:"
+    else:
+        caption = header + "Пока вы только начали путь пирата аниме.\n📜 Список просмотренного ниже:"
+
+    kb = build_watched_titles_paged_keyboard(chat_id, page=page)
+
+    if achievement:
+        img_path, _ = achievement
+        await send_or_edit_photo(chat_id, context, img_path, caption, kb)
+    else:
+        await edit_caption_only(chat_id, context, caption, kb)
+
     SEARCH_MODE[chat_id] = False
 
 
 async def show_continue_list(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
-    caption = "Тайтлы, которые ты сейчас смотришь:"
+    caption = "Тайтлы, которые ты сейчас смotришь:"
     kb = build_continue_keyboard(chat_id)
     await edit_caption_only(chat_id, context, caption, kb)
     SEARCH_MODE[chat_id] = False
@@ -1247,7 +1297,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "watched":
-        await show_watched_titles(chat_id, context)
+        await show_watched_with_rank_paged(chat_id, context, page=0)
+        return
+
+    # пагинация просмотренного
+    if data.startswith("watched_page:"):
+        _, page_str = data.split(":", 1)
+        try:
+            page = int(page_str)
+        except ValueError:
+            page = 0
+        await show_watched_with_rank_paged(chat_id, context, page=page)
         return
 
     if data.startswith("genre:"):
@@ -1335,7 +1395,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ep = USER_PROGRESS.get(chat_id, {}).get(slug)
         if ep is None:
             anime = ANIME.get(slug)
-            if anime and anime.get("episodes"):
+            if anime and anime.get("episodes"]:
                 ep = sorted(anime["episodes"].keys())[0]
             else:
                 ep = 1
@@ -1349,7 +1409,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ep = USER_PROGRESS.get(chat_id, {}).get(slug)
         if ep is None:
             anime = ANIME.get(slug)
-            if anime and anime.get("episodes"):
+            if anime and anime.get("episodes"]:
                 ep = sorted(anime["episodes"].keys())[0]
             else:
                 ep = 1
@@ -1361,23 +1421,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         USER_WATCHED_TITLES.setdefault(chat_id, set()).add(slug)
         save_users()
 
-        # считаем, сколько всего просмотренных тайтлов
-        count = len(USER_WATCHED_TITLES.get(chat_id, set()))
-        achievement = get_achievement_for_count(count)
-
-        if achievement:
-            img_path, text = achievement
-            # показываем картинку и текст достижения (вместо видео, это экран "ранга")
-            kb = build_main_menu_keyboard(chat_id)
-            await send_or_edit_photo(chat_id, context, img_path, text, kb)
-            SEARCH_MODE[chat_id] = False
-            return
-
-        # если достижения нет (например, count=0 — теоретически), просто возвращаемся к серии
+        # после добавления в просмотренное — просто возвращаемся к серии
         ep = USER_PROGRESS.get(chat_id, {}).get(slug)
         if ep is None:
             anime = ANIME.get(slug)
-            if anime and anime.get("episodes"):
+            if anime and anime.get("episodes"]:
                 ep = sorted(anime["episodes"].keys())[0]
             else:
                 ep = 1
@@ -1391,7 +1439,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ep = USER_PROGRESS.get(chat_id, {}).get(slug)
         if ep is None:
             anime = ANIME.get(slug)
-            if anime and anime.get("episodes"):
+            if anime and anime.get("episodes"]:
                 ep = sorted(anime["episodes"].keys())[0]
             else:
                 ep = 1
@@ -1815,4 +1863,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
