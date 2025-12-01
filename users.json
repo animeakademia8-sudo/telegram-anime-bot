@@ -26,6 +26,11 @@
     },
     "7164441840": {
       "ga4iakyta": 20
+    },
+    "8505295670": {
+      "pridvornii": 9,
+      "ga4iakyta": 2,
+      "sandad": 1
     }
   },
   "favorites": {
@@ -70,6 +75,12 @@
     },
     "7164441840": {
       "ga4iakyta": "AniDUB"
+    },
+    "8505295670": {
+      "ga4iakyta": "AniDUB",
+      "pridvornii": "default",
+      "basnaboga": "aniliberty",
+      "sandad": "Дубляжная"
     }
   }
 }
