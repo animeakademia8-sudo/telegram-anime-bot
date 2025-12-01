@@ -30,7 +30,8 @@
     "8505295670": {
       "pridvornii": 9,
       "ga4iakyta": 2,
-      "sandad": 1
+      "sandad": 1,
+      "basnaboga2": 26
     }
   },
   "favorites": {
@@ -38,15 +39,18 @@
     "710610332": [],
     "5862435405": [],
     "629599520": [
-      "ga4iakyta",
       "kolekcioner",
+      "ga4iakyta",
       "pridvornii"
     ]
   },
   "watched_titles": {
     "710610332": [],
     "852405425": [],
-    "1983768215": []
+    "1983768215": [],
+    "8505295670": [
+      "ga4iakyta"
+    ]
   },
   "current_track": {
     "852405425": {
@@ -80,7 +84,8 @@
       "ga4iakyta": "AniDUB",
       "pridvornii": "default",
       "basnaboga": "aniliberty",
-      "sandad": "Дубляжная"
+      "sandad": "Дубляжная",
+      "basnaboga2": "aniliberty"
     }
   }
 }
