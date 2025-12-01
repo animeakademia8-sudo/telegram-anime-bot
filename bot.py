@@ -32,7 +32,7 @@ SOURCE_CHAT_ID = -1003362969236
 ANIME_JSON_PATH = "anime.json"
 USERS_JSON_PATH = "users.json"
 
-# несколько админов
+# несколько аминов
 ADMIN_IDS = {852405425, 8505295670}
 
 # ===============================
