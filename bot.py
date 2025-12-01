@@ -32,8 +32,84 @@ SOURCE_CHAT_ID = -1003362969236
 ANIME_JSON_PATH = "anime.json"
 USERS_JSON_PATH = "users.json"
 
-# несколько аминов
-ADMIN_IDS = {852405425, 8505295670}
+ADMIN_ID = 852405425
+ADMIN2_ID = 8505295670  # второй админ
+
+# ===============================
+# ACHIEVEMENTS (просмотренные тайтлы)
+# ===============================
+
+# порог -> (путь_к_картинке, текст)
+ACHIEVEMENTS = {
+    1: (
+        "images/ach_1.jpg",
+        "☠️ Вы сделали первый шаг в море аниме.\n"
+        "💰 Награда за вашу голову: 1 000 белли.\n"
+        "Морская стража пока лишь присматривается к вам...",
+    ),
+    5: (
+        "images/ach_5.jpg",
+        "🏴‍☠️ Вы становитесь заметным пиратом.\n"
+        "💰 Награда за вашу голову: 5 000 белли.\n"
+        "В тавернах уже шепчутся о вашем вкусе к аниме.",
+    ),
+    10: (
+        "images/ach_10.jpg",
+        "💣 Вы входите в лигу серьёзных пиратов.\n"
+        "💰 Награда за вашу голову: 20 000 белли.\n"
+        "Маринфорд добавил ваше имя в список наблюдения.",
+    ),
+    25: (
+        "images/ach_25.jpg",
+        "🔥 Вы – капитан собственной команды.\n"
+        "💰 Награда за вашу голову: 80 000 белли.\n"
+        "Ваш корабль оставляет за собой след из просмотренных тайтлов.",
+    ),
+    50: (
+        "images/ach_50.jpg",
+        "💥 Вы наводите ужас на морскую пехоту.\n"
+        "💰 Награда за вашу голову: 180 000 белли.\n"
+        "Слухи о вашем запое аниме расходятся по всем морям.",
+    ),
+    100: (
+        "images/ach_100.jpg",
+        "👑 Вы вступаете в лигу великих пиратов.\n"
+        "💰 Награда за вашу голову: 350 000 белли.\n"
+        "Вас уже сравнивают с будущими Императорами Моря.",
+    ),
+    200: (
+        "images/ach_200.jpg",
+        "⚔️ Вы — кошмар Маринфорда и ночной кошмар цензоров.\n"
+        "💰 Награда за вашу голову: 600 000 белли.\n"
+        "Ваш список просмотренного выглядит как карта сокровищ.",
+    ),
+    300: (
+        "images/ach_300.jpg",
+        "🏆 Ваш флаг узнают в каждом порту.\n"
+        "💰 Награда за вашу голову: 900 000 белли.\n"
+        "Любой, кто спорит с вашим вкусом к аниме, рискует оказаться за бортом.",
+    ),
+    500: (
+        "images/ach_500.jpg",
+        "🐉 Вы близки к уровню Императора Моря.\n"
+        "💰 Награда за вашу голову: 1 500 000 белли.\n"
+        "Ваш шкаф с тайтлами признан опасным оружием массового отвлечения.",
+    ),
+    1000: (
+        "images/ach_1000.jpg",
+        "✨ Вы – легенда семи морей аниме.\n"
+        "💰 Награда за вашу голову: 3 000 000 белли.\n"
+        "О вас рассказывают истории новичкам как о мифе, который оказался правдой.",
+    ),
+    2000: (
+        "images/ach_2000.jpg",
+        "🌌 Вы вышли за пределы легенд.\n"
+        "💰 Награда за вашу голову: ??? белли — сумма скрыта правительством.\n"
+        "Вас боятся даже те, кто придумал это меню.",
+    ),
+}
+
+ACHIEVEMENT_THRESHOLDS = sorted(ACHIEVEMENTS.keys())
 
 # ===============================
 # IN-MEM STORAGE
@@ -63,7 +139,7 @@ ANIME: dict[str, dict] = {}
 # ===============================
 def load_anime() -> None:
     """
-    Грузим старый или новый формат и конверим в новый:
+    Грузим старый или новый формат и конвертим в новый:
     episodes[ep] = {"tracks": {track_name: {"source": ..., "skip": ...}}}
     """
     global ANIME
@@ -206,7 +282,7 @@ def load_users() -> None:
         for user_id_str, fav_list in data.get("favorites", {}).items():
             try:
                 user_id = int(user_id_str)
-            except ValueError:
+           	except ValueError:
                 continue
             if isinstance(fav_list, list):
                 USER_FAVORITES[user_id] = set(
@@ -284,6 +360,28 @@ def save_users() -> None:
 
     except Exception as e:
         print("Failed to save users.json:", e)
+
+
+# ===============================
+# UTILS: достижения
+# ===============================
+def get_achievement_for_count(count: int) -> Optional[tuple[str, str]]:
+    """
+    По количеству просмотренных тайтлов возвращает (path, text)
+    для максимального порога, который <= count.
+    Если порога нет (count < 1) — возвращает None.
+    """
+    if count < 1:
+        return None
+    chosen_threshold = None
+    for th in ACHIEVEMENT_THRESHOLDS:
+        if count >= th:
+            chosen_threshold = th
+        else:
+            break
+    if chosen_threshold is None:
+        return None
+    return ACHIEVEMENTS[chosen_threshold]
 
 
 # ===============================
@@ -1192,7 +1290,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ep = USER_PROGRESS.get(chat_id, {}).get(slug)
         if ep is None:
             anime = ANIME.get(slug)
-            if anime and anime.get("episodes"):
+            if anime and anime.get("episodes"]:
                 ep = sorted(anime["episodes"].keys())[0]
             else:
                 ep = 1
@@ -1206,7 +1304,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ep = USER_PROGRESS.get(chat_id, {}).get(slug)
         if ep is None:
             anime = ANIME.get(slug)
-            if anime and anime.get("episodes"):
+            if anime and anime.get("episodes"]:
                 ep = sorted(anime["episodes"].keys())[0]
             else:
                 ep = 1
@@ -1217,10 +1315,24 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         slug = data.split(":", 1)[1]
         USER_WATCHED_TITLES.setdefault(chat_id, set()).add(slug)
         save_users()
+
+        # считаем, сколько всего просмотренных тайтлов
+        count = len(USER_WATCHED_TITLES.get(chat_id, set()))
+        achievement = get_achievement_for_count(count)
+
+        if achievement:
+            img_path, text = achievement
+            # показываем картинку и текст достижения (вместо видео, это экран "ранга")
+            kb = build_main_menu_keyboard(chat_id)
+            await send_or_edit_photo(chat_id, context, img_path, text, kb)
+            SEARCH_MODE[chat_id] = False
+            return
+
+        # если достижения нет (например, count=0 — теоретически), просто возвращаемся к серии
         ep = USER_PROGRESS.get(chat_id, {}).get(slug)
         if ep is None:
             anime = ANIME.get(slug)
-            if anime and anime.get("episodes"):
+            if anime and anime.get("episodes"]:
                 ep = sorted(anime["episodes"].keys())[0]
             else:
                 ep = 1
@@ -1234,7 +1346,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ep = USER_PROGRESS.get(chat_id, {}).get(slug)
         if ep is None:
             anime = ANIME.get(slug)
-            if anime and anime.get("episodes"):
+            if anime and anime.get("episodes"]:
                 ep = sorted(anime["episodes"].keys())[0]
             else:
                 ep = 1
@@ -1405,8 +1517,8 @@ async def cmd_dump_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = update.effective_chat.id
 
-    if chat_id not in ADMIN_IDS:
-        await msg.reply_text("⛔ Эта команда только для админа.")
+    if chat_id not in (ADMIN_ID, ADMIN2_ID):
+        await msg.reply_text("⛔ Эта команда только для админов.")
         return
 
     if os.path.exists(ANIME_JSON_PATH):
@@ -1445,8 +1557,8 @@ async def cmd_clear_slug(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     chat_id = update.effective_chat.id
-    if chat_id not in ADMIN_IDS:
-        await msg.reply_text("⛔ Эта команда только для админа.")
+    if chat_id not in (ADMIN_ID, ADMIN2_ID):
+        await msg.reply_text("⛔ Эта команда только для админов.")
         return
 
     if not context.args:
@@ -1502,8 +1614,8 @@ async def cmd_clear_ep(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     chat_id = update.effective_chat.id
-    if chat_id not in ADMIN_IDS:
-        await msg.reply_text("⛔ Эта команда только для админа.")
+    if chat_id not in (ADMIN_ID, ADMIN2_ID):
+        await msg.reply_text("⛔ Эта команда только для админов.")
         return
 
     if len(context.args) < 2:
@@ -1658,4 +1770,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
