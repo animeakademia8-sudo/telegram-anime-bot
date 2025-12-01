@@ -32,7 +32,8 @@ SOURCE_CHAT_ID = -1003362969236
 ANIME_JSON_PATH = "anime.json"
 USERS_JSON_PATH = "users.json"
 
-ADMIN_ID = 852405425
+# несколько админов
+ADMIN_IDS = {852405425, 8505295670}
 
 # ===============================
 # IN-MEM STORAGE
@@ -1404,7 +1405,7 @@ async def cmd_dump_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = update.effective_chat.id
 
-    if chat_id != ADMIN_ID:
+    if chat_id not in ADMIN_IDS:
         await msg.reply_text("⛔ Эта команда только для админа.")
         return
 
@@ -1444,7 +1445,7 @@ async def cmd_clear_slug(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     chat_id = update.effective_chat.id
-    if chat_id != ADMIN_ID:
+    if chat_id not in ADMIN_IDS:
         await msg.reply_text("⛔ Эта команда только для админа.")
         return
 
@@ -1501,7 +1502,7 @@ async def cmd_clear_ep(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     chat_id = update.effective_chat.id
-    if chat_id != ADMIN_ID:
+    if chat_id not in ADMIN_IDS:
         await msg.reply_text("⛔ Эта команда только для админа.")
         return
 
@@ -1657,3 +1658,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
