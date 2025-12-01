@@ -43,7 +43,7 @@ ADMIN2_ID = 8505295670  # второй админ
 ACHIEVEMENTS = {
     1: (
         "images/ach_1.jpg",
-        ☠️ Вы сделали первый шаг в море аниме.\n"
+        "💀 Вы сделали первый шаг в море аниме.\n"
         "💰 Награда за вашу голову: 1 000 белли.\n"
         "Морская стража пока лишь присматривается к вам...",
     ),
@@ -283,7 +283,7 @@ def load_users() -> None:
             try:
                 user_id = int(user_id_str)
             except ValueError:
-               	continue
+                continue
             if isinstance(fav_list, list):
                 USER_FAVORITES[user_id] = set(
                     [slug for slug in fav_list if isinstance(slug, str)]
@@ -528,7 +528,6 @@ def build_genre_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-# >>> PAGINATION: жанр + страница
 def build_anime_by_genre_keyboard(genre: str, page: int = 0, per_page: int = 10) -> InlineKeyboardMarkup:
     # Собираем все тайтлы этого жанра
     items: list[tuple[str, dict]] = []
