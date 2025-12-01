@@ -282,8 +282,8 @@ def load_users() -> None:
         for user_id_str, fav_list in data.get("favorites", {}).items():
             try:
                 user_id = int(user_id_str)
-           	except ValueError:
-                continue
+            except ValueError:
+               	continue
             if isinstance(fav_list, list):
                 USER_FAVORITES[user_id] = set(
                     [slug for slug in fav_list if isinstance(slug, str)]
@@ -851,10 +851,50 @@ async def send_or_edit_photo(
     caption: str,
     reply_markup: InlineKeyboardMarkup,
 ):
+    """
+    Безопасная отправка фото:
+    - если картинки нет, не падаем, а просто редачим/шлём текст.
+    """
+    # выберем реальный путь к картинке, если есть
+    use_path = None
+    if photo_path and os.path.exists(photo_path):
+        use_path = photo_path
+    elif WELCOME_PHOTO and os.path.exists(WELCOME_PHOTO):
+        use_path = WELCOME_PHOTO
+
     msg_id = LAST_MESSAGE.get(chat_id)
+
+    # если нет ни одной картинки — работаем только с текстом
+    if not use_path:
+        if msg_id:
+            try:
+                await context.bot.edit_message_caption(
+                    chat_id=chat_id,
+                    message_id=msg_id,
+                    caption=caption,
+                    reply_markup=reply_markup,
+                )
+                LAST_MESSAGE_TYPE[chat_id] = "text"
+                return msg_id
+            except Exception:
+                try:
+                    await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
+                except Exception:
+                    pass
+
+        sent = await context.bot.send_message(
+            chat_id=chat_id,
+            text=caption,
+            reply_markup=reply_markup,
+        )
+        LAST_MESSAGE[chat_id] = sent.message_id
+        LAST_MESSAGE_TYPE[chat_id] = "text"
+        return sent.message_id
+
+    # если картинка есть — пробуем редактировать / отправить фото
     if msg_id:
         try:
-            with open(photo_path, "rb") as ph:
+            with open(use_path, "rb") as ph:
                 await context.bot.edit_message_media(
                     media=InputMediaPhoto(media=ph, caption=caption),
                     chat_id=chat_id,
@@ -873,7 +913,7 @@ async def send_or_edit_photo(
             except Exception:
                 pass
 
-    with open(photo_path, "rb") as ph:
+    with open(use_path, "rb") as ph:
         sent = await context.bot.send_photo(
             chat_id=chat_id,
             photo=ph,
@@ -931,8 +971,14 @@ async def edit_caption_only(
     caption: str,
     reply_markup: Optional[InlineKeyboardMarkup] = None,
 ):
+    """
+    Безопасно редактируем подпись:
+    - если исходное сообщение было с фото и оно пропало, используем send_or_edit_photo,
+      который сам решает, есть ли картинка или только текст.
+    """
     msg_id = LAST_MESSAGE.get(chat_id)
     if not msg_id:
+        # просто выводим как "экран" через send_or_edit_photo (она сама решит: есть картинка или нет)
         return await send_or_edit_photo(
             chat_id,
             context,
@@ -940,6 +986,7 @@ async def edit_caption_only(
             caption,
             reply_markup or build_main_menu_keyboard(chat_id),
         )
+
     try:
         await context.bot.edit_message_caption(
             chat_id=chat_id,
@@ -953,16 +1000,14 @@ async def edit_caption_only(
             await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
         except Exception:
             pass
-        with open(WELCOME_PHOTO, "rb") as ph:
-            sent = await context.bot.send_photo(
-                chat_id=chat_id,
-                photo=ph,
-                caption=caption,
-                reply_markup=reply_markup,
-            )
-        LAST_MESSAGE[chat_id] = sent.message_id
-        LAST_MESSAGE_TYPE[chat_id] = "photo"
-        return sent.message_id
+        # fallback — снова через send_or_edit_photo (с проверкой на наличие файлов)
+        return await send_or_edit_photo(
+            chat_id,
+            context,
+            WELCOME_PHOTO,
+            caption,
+            reply_markup or build_main_menu_keyboard(chat_id),
+        )
 
 
 # ===============================
@@ -1290,7 +1335,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ep = USER_PROGRESS.get(chat_id, {}).get(slug)
         if ep is None:
             anime = ANIME.get(slug)
-            if anime and anime.get("episodes"]:
+            if anime and anime.get("episodes"):
                 ep = sorted(anime["episodes"].keys())[0]
             else:
                 ep = 1
@@ -1304,7 +1349,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ep = USER_PROGRESS.get(chat_id, {}).get(slug)
         if ep is None:
             anime = ANIME.get(slug)
-            if anime and anime.get("episodes"]:
+            if anime and anime.get("episodes"):
                 ep = sorted(anime["episodes"].keys())[0]
             else:
                 ep = 1
@@ -1332,7 +1377,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ep = USER_PROGRESS.get(chat_id, {}).get(slug)
         if ep is None:
             anime = ANIME.get(slug)
-            if anime and anime.get("episodes"]:
+            if anime and anime.get("episodes"):
                 ep = sorted(anime["episodes"].keys())[0]
             else:
                 ep = 1
@@ -1346,7 +1391,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ep = USER_PROGRESS.get(chat_id, {}).get(slug)
         if ep is None:
             anime = ANIME.get(slug)
-            if anime and anime.get("episodes"]:
+            if anime and anime.get("episodes"):
                 ep = sorted(anime["episodes"].keys())[0]
             else:
                 ep = 1
@@ -1770,3 +1815,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
