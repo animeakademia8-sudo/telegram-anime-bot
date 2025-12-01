@@ -502,7 +502,7 @@ def build_main_menu_keyboard(chat_id: int) -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("💖 Избранное", callback_data="favorites"),
-            InlineKeyboardButton("👁 Просмотренное", callback_data="watched"),
+            InlineKeyboardButton("👁 Просмотренное", callback_data="watched:0"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -733,8 +733,13 @@ def build_anime_menu(chat_id: int) -> InlineKeyboardMarkup:
 
 def build_favorites_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     favs = USER_FAVORITES.get(chat_id, set())
+    # сортируем по названию
+    sorted_slugs = sorted(
+        list(favs),
+        key=lambda s: ANIME.get(s, {}).get("title", s).lower()
+    )
     rows = []
-    for slug in favs:
+    for slug in sorted_slugs:
         anime = ANIME.get(slug, {})
         title = anime.get("title", slug)
         status = anime.get("status", "ongoing")
@@ -747,20 +752,55 @@ def build_favorites_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-def build_watched_titles_keyboard(chat_id: int) -> InlineKeyboardMarkup:
+def build_watched_titles_keyboard(chat_id: int, page: int = 0, per_page: int = 10) -> InlineKeyboardMarkup:
     watched_titles = USER_WATCHED_TITLES.get(chat_id, set())
-    rows = []
-    for slug in sorted(watched_titles):
+    watched_list = sorted(
+        list(watched_titles),
+        key=lambda s: ANIME.get(s, {}).get("title", s).lower()
+    )
+
+    keyboard: list[list[InlineKeyboardButton]] = []
+
+    if not watched_list:
+        keyboard.append([InlineKeyboardButton("Пусто", callback_data="menu")])
+        keyboard.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
+        return InlineKeyboardMarkup(keyboard)
+
+    total = len(watched_list)
+    total_pages = (total + per_page - 1) // per_page
+
+    if page < 0:
+        page = 0
+    if page >= total_pages:
+        page = total_pages - 1
+
+    start = page * per_page
+    end = start + per_page
+    page_slugs = watched_list[start:end]
+
+    for slug in page_slugs:
         anime = ANIME.get(slug, {})
         title = anime.get("title", slug)
         status = anime.get("status", "ongoing")
         if status == "ongoing":
             title = f"{title} [Онг.]"
-        rows.append([InlineKeyboardButton(title, callback_data=f"anime:{slug}")])
-    if not rows:
-        rows = [[InlineKeyboardButton("Пусто", callback_data="menu")]]
-    rows.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
-    return InlineKeyboardMarkup(rows)
+        keyboard.append([InlineKeyboardButton(title, callback_data=f"anime:{slug}")])
+
+    # пагинация
+    nav_row: list[InlineKeyboardButton] = []
+    if page > 0:
+        nav_row.append(
+            InlineKeyboardButton("⬅️ Назад", callback_data=f"watched:{page-1}")
+        )
+    if page < total_pages - 1:
+        nav_row.append(
+            InlineKeyboardButton("➡️ Далее", callback_data=f"watched:{page+1}")
+        )
+    if nav_row:
+        keyboard.append(nav_row)
+
+    keyboard.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
+    return InlineKeyboardMarkup(keyboard)
 
 
 def build_continue_keyboard(chat_id: int) -> InlineKeyboardMarkup:
@@ -826,8 +866,14 @@ def build_continue_item_keyboard(chat_id: int, slug: str) -> InlineKeyboardMarku
 
 
 def build_search_results_keyboard(matches: list[str]) -> InlineKeyboardMarkup:
+    # сортируем совпадения по названию
+    matches_sorted = sorted(
+        matches,
+        key=lambda s: ANIME.get(s, {}).get("title", s).lower()
+    )
+
     rows = []
-    for slug in matches:
+    for slug in matches_sorted:
         anime = ANIME.get(slug, {})
         title = anime.get("title", slug)
         status = anime.get("status", "ongoing")
@@ -1160,10 +1206,26 @@ async def show_favorites(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     SEARCH_MODE[chat_id] = False
 
 
-async def show_watched_titles(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
-    caption = "Просмотренные тайтлы:"
-    kb = build_watched_titles_keyboard(chat_id)
-    await edit_caption_only(chat_id, context, caption, kb)
+async def show_watched_titles(chat_id: int, context: ContextTypes.DEFAULT_TYPE, page: int = 0):
+    """
+    Экран просмотренных тайтлов:
+    - показывает пиратский ранг (достижение) как картинку + текст
+    - список тайтлов с пагинацией по 10, отсортированный по алфавиту
+    """
+    count = len(USER_WATCHED_TITLES.get(chat_id, set()))
+    achievement = get_achievement_for_count(count)
+
+    kb = build_watched_titles_keyboard(chat_id, page=page)
+
+    if achievement:
+        img_path, text = achievement
+        # добавим в текст количество тайтлов
+        full_text = f"{text}\n\n👁 Просмотрено тайтлов: {count}"
+        await send_or_edit_photo(chat_id, context, img_path, full_text, kb)
+    else:
+        caption = f"Просмотренные тайтлы (всего: {count}):"
+        await edit_caption_only(chat_id, context, caption, kb)
+
     SEARCH_MODE[chat_id] = False
 
 
@@ -1245,8 +1307,18 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_favorites(chat_id, context)
         return
 
+    # просмотренные + пагинация
     if data == "watched":
-        await show_watched_titles(chat_id, context)
+        await show_watched_titles(chat_id, context, page=0)
+        return
+
+    if data.startswith("watched:"):
+        _, page_str = data.split(":", 1)
+        try:
+            page = int(page_str)
+        except ValueError:
+            page = 0
+        await show_watched_titles(chat_id, context, page=page)
         return
 
     if data.startswith("genre:"):
@@ -1360,19 +1432,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         USER_WATCHED_TITLES.setdefault(chat_id, set()).add(slug)
         save_users()
 
-        # считаем, сколько всего просмотренных тайтлов
-        count = len(USER_WATCHED_TITLES.get(chat_id, set()))
-        achievement = get_achievement_for_count(count)
-
-        if achievement:
-            img_path, text = achievement
-            # показываем картинку и текст достижения (вместо видео, это экран "ранга")
-            kb = build_main_menu_keyboard(chat_id)
-            await send_or_edit_photo(chat_id, context, img_path, text, kb)
-            SEARCH_MODE[chat_id] = False
-            return
-
-        # если достижения нет (например, count=0 — теоретически), просто возвращаемся к серии
+        # просто остаёмся на серии, НИЧЕГО не показываем по рангам здесь
         ep = USER_PROGRESS.get(chat_id, {}).get(slug)
         if ep is None:
             anime = ANIME.get(slug)
