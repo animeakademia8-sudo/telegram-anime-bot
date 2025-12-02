@@ -28,10 +28,12 @@
       "ga4iakyta": 20
     },
     "8505295670": {
-      "pridvornii": 9,
+      "pridvornii": 1,
       "ga4iakyta": 2,
-      "sandad": 1,
-      "basnaboga2": 26
+      "sandad": 6,
+      "basnaboga2": 1,
+      "basnaboga": 1,
+      "kolekcioner": 1
     }
   },
   "favorites": {
@@ -39,8 +41,8 @@
     "710610332": [],
     "5862435405": [],
     "629599520": [
-      "kolekcioner",
       "ga4iakyta",
+      "kolekcioner",
       "pridvornii"
     ]
   },
@@ -49,7 +51,11 @@
     "852405425": [],
     "1983768215": [],
     "8505295670": [
-      "ga4iakyta"
+      "ga4iakyta",
+      "basnaboga",
+      "basnaboga2",
+      "sandad",
+      "kolekcioner"
     ]
   },
   "current_track": {
@@ -85,7 +91,8 @@
       "pridvornii": "default",
       "basnaboga": "aniliberty",
       "sandad": "Дубляжная",
-      "basnaboga2": "aniliberty"
+      "basnaboga2": "aniliberty",
+      "kolekcioner": "dream cast"
     }
   }
 }
