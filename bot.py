@@ -35,10 +35,6 @@ USERS_JSON_PATH = "users.json"
 ADMIN_ID = 852405425
 ADMIN2_ID = 8505295670  # второй админ
 
-# LIMITS for "continue"
-CONTINUE_MAX_TITLES = 20
-CONTINUE_PER_PAGE = 10
-
 # ===============================
 # ACHIEVEMENTS (просмотренные тайтлы)
 # ===============================
@@ -122,7 +118,7 @@ LAST_MESSAGE: dict[int, int] = {}
 LAST_MESSAGE_TYPE: dict[int, str] = {}
 SEARCH_MODE: dict[int, bool] = {}
 
-# user_id -> {slug: ep}  (insertion order matters; oldest = first)
+# user_id -> {slug: ep}
 USER_PROGRESS: dict[int, dict[str, int]] = {}
 
 # user_id -> set(slug)
@@ -134,9 +130,15 @@ USER_WATCHED_TITLES: dict[int, set[str]] = {}
 # user_id -> {slug: track_name}  ТЕКУЩАЯ ОЗВУЧКА ДЛЯ ТАЙТЛА
 CURRENT_TRACK: dict[int, dict[str, str]] = {}
 
+# chat_id -> bool  (режим случайного — чтобы показать кнопку "Случайное" на экране серии)
+RANDOM_MODE: dict[int, bool] = {}
+
 # slug -> {title, genres, status, episodes{ep: {"tracks": {track_name: {source, skip}}}}}
 ANIME: dict[str, dict] = {}
 
+# limits
+CONTINUE_LIMIT = 20
+CONTINUE_PAGE_SIZE = 10
 
 # ===============================
 # JSON SAVE/LOAD: ANIME
@@ -489,38 +491,6 @@ def add_or_update_anime_from_message(msg: Message) -> Optional[str]:
 
 
 # ===============================
-# HELPERS: user progress limit (continue)
-# ===============================
-def update_user_progress(chat_id: int, slug: str, ep: int) -> None:
-    """
-    Обновляет USER_PROGRESS[chat_id][slug] = ep
-    - если slug уже есть — обновляет значение и перемещает в конец (чтобы он был 'новым')
-    - если после добавления > CONTINUE_MAX_TITLES — удаляет самый старый (первый вставленный)
-    """
-    USER_PROGRESS.setdefault(chat_id, {})
-    prog = USER_PROGRESS[chat_id]
-
-    # если slug уже есть, удалим чтобы затем вставить в конец (обновить порядок)
-    if slug in prog:
-        del prog[slug]
-
-    prog[slug] = ep
-
-    # Обрезаем до CONTINUE_MAX_TITLES: удалить самые старые
-    while len(prog) > CONTINUE_MAX_TITLES:
-        # pop first inserted item
-        # dict.popitem(last=False) доступен в Python 3.7+ (действует)
-        try:
-            oldest_slug, _ = prog.popitem(last=False)
-        except TypeError:
-            # на случай старых версий или иных структур: берем первый ключ
-            oldest_slug = next(iter(prog))
-            del prog[oldest_slug]
-
-    save_users()
-
-
-# ===============================
 # UI BUILDERS
 # ===============================
 def build_main_menu_keyboard(chat_id: int) -> InlineKeyboardMarkup:
@@ -672,7 +642,7 @@ def build_tracks_keyboard(slug: str, ep: int, current_track: Optional[str]) -> l
 def build_episode_keyboard(slug: str, ep: int, chat_id: int, current_track: Optional[str]) -> InlineKeyboardMarkup:
     episodes = ANIME[slug]["episodes"]
 
-    # определяем выбранную озвучку из CURRENT_TRACK, если не передали
+    # определяем выбранню озвучку из CURRENT_TRACK, если не передали
     user_tracks = CURRENT_TRACK.get(chat_id, {})
     stored_track = user_tracks.get(slug)
     if stored_track:
@@ -684,13 +654,16 @@ def build_episode_keyboard(slug: str, ep: int, chat_id: int, current_track: Opti
     has_next_same_track = False
     has_next_other_track = False
 
-    # проверим следующую серию (ep+1)
-    if (ep + 1) in episodes:
-        next_tracks = episodes[ep + 1].get("tracks", {})
+    # Проверяем следующую серию (ep+1)
+    next_ep = ep + 1
+    if next_ep in episodes:
+        next_tracks = episodes[next_ep].get("tracks", {})
         if current_track and current_track in next_tracks:
             has_next_same_track = True
-        elif next_tracks:
-            has_next_other_track = True
+        else:
+            # если хоть одна дорожка есть у следующей серии, то есть "в другой озвучке"
+            if next_tracks:
+                has_next_other_track = True
 
     nav: list[InlineKeyboardButton] = []
     if has_prev:
@@ -735,6 +708,11 @@ def build_episode_keyboard(slug: str, ep: int, chat_id: int, current_track: Opti
 
     if nav:
         rows.append(nav)
+
+    # Добавляем кнопку "Случайное" на экран серии только если режим случайного включён для чата
+    if RANDOM_MODE.get(chat_id, False):
+        rows.append([InlineKeyboardButton("🎲 Случайное", callback_data="random")])
+
     rows.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
     return InlineKeyboardMarkup(rows)
 
@@ -840,9 +818,9 @@ def build_watched_titles_keyboard(chat_id: int, page: int = 0, per_page: int = 1
     return InlineKeyboardMarkup(keyboard)
 
 
-def build_continue_keyboard(chat_id: int, page: int = 0, per_page: int = CONTINUE_PER_PAGE) -> InlineKeyboardMarkup:
+def build_continue_keyboard(chat_id: int, page: int = 0, per_page: int = CONTINUE_PAGE_SIZE) -> InlineKeyboardMarkup:
     """
-    Показывает список прогресса (continue) постранично по per_page (по умолчанию 10).
+    Пагинация по 10 на экран. Сортировка по названию.
     """
     user_prog = USER_PROGRESS.get(chat_id, {})
     rows = []
@@ -852,14 +830,13 @@ def build_continue_keyboard(chat_id: int, page: int = 0, per_page: int = CONTINU
         rows.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
         return InlineKeyboardMarkup(rows)
 
-    # Список в порядке вставки — oldest first. Для отображения сортируем по title.
-    # Но нам нужно сохранить порядок вставки for "старый первый удаляется", при показе можно сортировать по title.
-    items = list(user_prog.items())  # [(slug, ep), ...]
-    # Для удобства пользователя показываем отсортированно по title, но с сохранением возможность пагинации по items_count.
-    # Здесь сделаю: сортировка по title для удобства (как у других списков).
-    items_sorted = sorted(items, key=lambda x: ANIME.get(x[0], {}).get("title", x[0]).lower())
+    # Сортируем элементы по названию отображаемого тайтла
+    items = sorted(
+        list(user_prog.items()),
+        key=lambda pair: ANIME.get(pair[0], {}).get("title", pair[0]).lower()
+    )
 
-    total = len(items_sorted)
+    total = len(items)
     total_pages = (total + per_page - 1) // per_page
     if page < 0:
         page = 0
@@ -868,7 +845,7 @@ def build_continue_keyboard(chat_id: int, page: int = 0, per_page: int = CONTINU
 
     start = page * per_page
     end = start + per_page
-    page_items = items_sorted[start:end]
+    page_items = items[start:end]
 
     for slug, ep in page_items:
         anime = ANIME.get(slug, {})
@@ -883,7 +860,7 @@ def build_continue_keyboard(chat_id: int, page: int = 0, per_page: int = CONTINU
             )
         ])
 
-    # пагинация
+    # Навигация по страницам продолжить
     nav_row: list[InlineKeyboardButton] = []
     if page > 0:
         nav_row.append(InlineKeyboardButton("⬅️ Назад", callback_data=f"continue_page:{page-1}"))
@@ -921,9 +898,8 @@ def build_continue_item_keyboard(chat_id: int, slug: str) -> InlineKeyboardMarku
         )
     ])
 
-    # возврат на страницу 0 списка продолжить
     rows.append([
-        InlineKeyboardButton("⬅️ Назад к списку", callback_data="continue_page:0")
+        InlineKeyboardButton("⬅️ Назад к списку", callback_data="continue_list")
     ])
 
     rows.append([
@@ -1127,6 +1103,9 @@ async def edit_caption_only(
 # SCREENS
 # ===============================
 async def show_main_menu(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
+    # выход из random режима
+    RANDOM_MODE[chat_id] = False
+
     caption = "Приятного просмотра ✨\nВсе управление через кнопки ниже."
     kb = build_main_menu_keyboard(chat_id)
     await send_or_edit_photo(chat_id, context, WELCOME_PHOTO, caption, kb)
@@ -1134,6 +1113,9 @@ async def show_main_menu(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def show_genres(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
+    # выход из random режима
+    RANDOM_MODE[chat_id] = False
+
     caption = "Выбери жанр:"
     kb = build_genre_keyboard()
     await edit_caption_only(chat_id, context, caption, kb)
@@ -1141,6 +1123,9 @@ async def show_genres(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def show_anime_list(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
+    # выход из random режима
+    RANDOM_MODE[chat_id] = False
+
     caption = "Список аниме:"
     kb = build_anime_menu(chat_id)
     await edit_caption_only(chat_id, context, caption, kb)
@@ -1148,6 +1133,9 @@ async def show_anime_list(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def show_anime_by_genre(chat_id: int, context: ContextTypes.DEFAULT_TYPE, genre: str, page: int = 0):
+    # выход из random режима
+    RANDOM_MODE[chat_id] = False
+
     caption = f"Жанр: {genre.capitalize()}\nВыбери аниме:"
     kb = build_anime_by_genre_keyboard(genre, page=page)
     await edit_caption_only(chat_id, context, caption, kb)
@@ -1155,6 +1143,9 @@ async def show_anime_by_genre(chat_id: int, context: ContextTypes.DEFAULT_TYPE, 
 
 
 async def show_ongoings(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
+    # выход из random режима
+    RANDOM_MODE[chat_id] = False
+
     caption = "Онгоинги (ещё выходят):"
     kb = build_ongoings_keyboard()
     await edit_caption_only(chat_id, context, caption, kb)
@@ -1194,6 +1185,21 @@ def _pick_track_for_episode(slug: str, ep: int, chat_id: int, track_name: Option
     return first_name, tracks[first_name]
 
 
+def _ensure_continue_limit(chat_id: int):
+    """
+    Удерживает USER_PROGRESS[chat_id] в размере не больше CONTINUE_LIMIT.
+    Если превысили — удаляем самый старый (первый вставленный) элемент.
+    ВАЖНО: dict сохраняет порядок вставки (py3.7+).
+    """
+    prog = USER_PROGRESS.get(chat_id)
+    if not prog:
+        return
+    while len(prog) > CONTINUE_LIMIT:
+        # удаляем первый элемент (самый старый)
+        oldest_slug = next(iter(prog.keys()))
+        del prog[oldest_slug]
+
+
 async def show_episode(
     chat_id: int,
     context: ContextTypes.DEFAULT_TYPE,
@@ -1231,15 +1237,25 @@ async def show_episode(
         caption_lines.append(f"⏩ Пропустить опенинг: {skip}")
     caption = "\n".join(caption_lines)
 
+    # Сохраняем прогресс: если это новый slug для пользователя, добавляем в конец (и обрезаем старые)
+    USER_PROGRESS.setdefault(chat_id, {})
+    is_new = slug not in USER_PROGRESS[chat_id]
+    USER_PROGRESS[chat_id][slug] = ep
+    if is_new:
+        _ensure_continue_limit(chat_id)
+    save_users()
+
     kb = build_episode_keyboard(slug, ep, chat_id, chosen_track_name)
     await send_or_edit_video(chat_id, context, source, caption, kb)
 
-    # Обновляем прогресс пользователя с лимитом
-    update_user_progress(chat_id, slug, ep)
     SEARCH_MODE[chat_id] = False
+    # Замечание: RANDOM_MODE не трогаем — включается при show_random и выключается при выходе в меню/жанры и т.д.
 
 
 async def show_episode_list(chat_id: int, context: ContextTypes.DEFAULT_TYPE, slug: str):
+    # выход из random режима — показываем список эпизодов обычным способом
+    RANDOM_MODE[chat_id] = False
+
     anime = ANIME.get(slug)
     if not anime:
         await edit_caption_only(chat_id, context, "Аниме не найдено", build_main_menu_keyboard(chat_id))
@@ -1257,16 +1273,24 @@ async def show_random(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     if not ANIME:
         await edit_caption_only(chat_id, context, "Пока нет доступных аниме 😔", build_main_menu_keyboard(chat_id))
         return
+
+    # включаем random режим для чата, чтобы кнопка "случайное" отображалась на экране серии
+    RANDOM_MODE[chat_id] = True
+
     slug = random.choice(list(ANIME.keys()))
     # Выбираем первую серию
     eps = sorted(ANIME[slug]["episodes"].keys())
     if not eps:
         await edit_caption_only(chat_id, context, "Нет серий у этого тайтла 😔", build_main_menu_keyboard(chat_id))
         return
+    # Показываем выбранную серию — режим RANDOM_MODE сохранится и на её экране будет кнопка "🎲 Случайное"
     await show_episode(chat_id, context, slug, eps[0])
 
 
 async def show_favorites(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
+    # выход из random режима
+    RANDOM_MODE[chat_id] = False
+
     caption = "Избранное:"
     kb = build_favorites_keyboard(chat_id)
     await edit_caption_only(chat_id, context, caption, kb)
@@ -1274,6 +1298,9 @@ async def show_favorites(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def show_watched_titles(chat_id: int, context: ContextTypes.DEFAULT_TYPE, page: int = 0):
+    # выход из random режима
+    RANDOM_MODE[chat_id] = False
+
     """
     Экран просмотренных тайтлов:
     - показывает пиратский ранг (достижение) как картинку + текст
@@ -1297,6 +1324,9 @@ async def show_watched_titles(chat_id: int, context: ContextTypes.DEFAULT_TYPE, 
 
 
 async def show_continue_list(chat_id: int, context: ContextTypes.DEFAULT_TYPE, page: int = 0):
+    # выход из random режима
+    RANDOM_MODE[chat_id] = False
+
     caption = "Тайтлы, которые ты сейчас смотришь:"
     kb = build_continue_keyboard(chat_id, page=page)
     await edit_caption_only(chat_id, context, caption, kb)
@@ -1321,6 +1351,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "random":
+        # when pressed random we want to pick another random and show it
         await show_random(chat_id, context)
         return
 
@@ -1336,7 +1367,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_continue_list(chat_id, context, page=0)
         return
 
-    # paging for continue
     if data.startswith("continue_page:"):
         _, page_str = data.split(":", 1)
         try:
@@ -1358,7 +1388,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ep = USER_PROGRESS.get(chat_id, {}).get(slug)
         if not ep:
             await query.answer("Нет сохранённого прогресса для этого тайтла.", show_alert=True)
-            await show_continue_list(chat_id, context, page=0)
+            await show_continue_list(chat_id, context)
             return
         await show_episode(chat_id, context, slug, ep)
         return
@@ -1371,11 +1401,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 del USER_PROGRESS[chat_id]
             save_users()
         await query.answer("Убрано из продолжения.")
-        await show_continue_list(chat_id, context, page=0)
+        await show_continue_list(chat_id, context)
         return
 
     if data == "search":
         SEARCH_MODE[chat_id] = True
+        # выход из random режима
+        RANDOM_MODE[chat_id] = False
+
         caption = "🔍 Введи название аниме сообщением (или его часть).\n(Текст потом удалю, реагирую только на кнопки)"
         await edit_caption_only(chat_id, context, caption, build_main_menu_keyboard(chat_id))
         return
@@ -1421,6 +1454,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await edit_caption_only(chat_id, context, "У этого тайтла ещё нет серий.", build_main_menu_keyboard(chat_id))
             return
         first_ep = sorted(anime["episodes"].keys())[0]
+        # переход в просмотр серии — выключаем random режим (т.к. пользователь явно открыл тайтл не через random)
+        RANDOM_MODE[chat_id] = False
         await show_episode(chat_id, context, slug, first_ep)
         return
 
@@ -1432,6 +1467,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("ep:"):
         _, slug, ep_str = data.split(":")
         ep = int(ep_str)
+        # пользователь выбрал эп — выключаем random режим (очевидно пользователь работает с каталогом)
+        RANDOM_MODE[chat_id] = False
         await show_episode(chat_id, context, slug, ep)
         return
 
@@ -1597,6 +1634,8 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             SEARCH_MODE[chat_id] = False
             return
         first_ep = sorted(anime["episodes"].keys())[0]
+        # пользователь пришёл через поиск — выключаем random режим
+        RANDOM_MODE[chat_id] = False
         await show_episode(chat_id, context, found_slug, first_ep)
         SEARCH_MODE[chat_id] = False
         return
@@ -1613,9 +1652,6 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ===============================  вэтой части?
-
-
-# ===============================
 # EXTRA CLEANUP ХЭНДЛЕР
 # ===============================
 async def cleanup_non_command_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1954,3 +1990,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
