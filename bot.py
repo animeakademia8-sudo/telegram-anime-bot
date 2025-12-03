@@ -560,12 +560,8 @@ def build_genre_keyboard() -> InlineKeyboardMarkup:
             row = []
     if row:
         rows.append(row)
-    rows.append([
-    InlineKeyboardButton("🎲 Случайное", callback_data="random"),
-    InlineKeyboardButton("🍄 Меню", callback_data="menu")
-])
-
-
+    rows.append([InlineKeyboardButton("🍄 Меню", callback_data="menu")])
+return InlineKeyboardMarkup(rows)
 
 def build_anime_by_genre_keyboard(genre: str, page: int = 0, per_page: int = 10) -> InlineKeyboardMarkup:
     # Собираем все тайтлы этого жанра
