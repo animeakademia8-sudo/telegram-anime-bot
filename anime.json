@@ -791,6 +791,18 @@
             "skip": "3:10"
           }
         }
+      },
+      "10": {
+        "tracks": {
+          "Aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAIBqGkwaDuYYpdOrDtOg9NuUBIz2OssAAJ_mwACBW-BSV8elUxNUtcSNgQ",
+            "skip": "2:36"
+          },
+          "dream cast": {
+            "source": "BAACAgIAAyEFAATIctaUAAIBqWkwaPrHuR2L2v_jb6bqauSNq0ojAAKLmwACBW-BScC_ScwF_jwUNgQ",
+            "skip": "2:43"
+          }
+        }
       }
     }
   },
@@ -1096,7 +1108,7 @@
     }
   },
   "lunoepytisestvie2": {
-    "title": "Лунное путешествие приведет к новому миру 2",
+    "title": "Лунное путешествие 2 приведет к новому миру",
     "genres": [
       "комедия",
       "приключения",
@@ -1104,7 +1116,7 @@
       "фэнтези",
       "исекай"
     ],
-    "status": "ongoing",
+    "status": "finish",
     "episodes": {
       "7": {
         "tracks": {
