@@ -250,8 +250,6 @@ def save_anime() -> None:
             json.dump(data_to_save, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print("Failed to save anime.json:", e)
-
-
 # ===============================
 # JSON SAVE/LOAD: USERS
 # ===============================
@@ -1200,6 +1198,16 @@ def _ensure_continue_limit(chat_id: int):
         del prog[oldest_slug]
 
 
+def add_progress_on_next(chat_id: int, slug: str, next_ep: int):
+    """
+    Добавление прогресса при нажатии Next.
+    """
+    USER_PROGRESS.setdefault(chat_id, {})
+    USER_PROGRESS[chat_id][slug] = next_ep
+    _ensure_continue_limit(chat_id)
+    save_users()
+
+
 async def show_episode(
     chat_id: int,
     context: ContextTypes.DEFAULT_TYPE,
@@ -1237,19 +1245,14 @@ async def show_episode(
         caption_lines.append(f"⏩ Пропустить опенинг: {skip}")
     caption = "\n".join(caption_lines)
 
-    # Сохраняем прогресс: если это новый slug для пользователя, добавляем в конец (и обрезаем старые)
-    USER_PROGRESS.setdefault(chat_id, {})
-    is_new = slug not in USER_PROGRESS[chat_id]
-    USER_PROGRESS[chat_id][slug] = ep
-    if is_new:
-        _ensure_continue_limit(chat_id)
-    save_users()
+    # Примечание: теперь НЕ сохраняем прогресс при простом открытии серии.
+    # Прогресс сохраняется только в обработчике "next" / "next_other" (кнопки следующая серия).
 
     kb = build_episode_keyboard(slug, ep, chat_id, chosen_track_name)
     await send_or_edit_video(chat_id, context, source, caption, kb)
 
     SEARCH_MODE[chat_id] = False
-    # Замечание: RANDOM_MODE не трогаем — включается при show_random и выключается при выходе в меню/жанры и т.д.
+    # RANDOM_MODE оставляем как есть (включается/выключается в соответствующих местах)
 
 
 async def show_episode_list(chat_id: int, context: ContextTypes.DEFAULT_TYPE, slug: str):
@@ -1331,8 +1334,6 @@ async def show_continue_list(chat_id: int, context: ContextTypes.DEFAULT_TYPE, p
     kb = build_continue_keyboard(chat_id, page=page)
     await edit_caption_only(chat_id, context, caption, kb)
     SEARCH_MODE[chat_id] = False
-
-
 # ===============================
 # CALLBACKS
 # ===============================
@@ -1476,9 +1477,30 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _, slug, ep_str = data.split(":")
         current = int(ep_str)
         next_ep = current + 1
-        # просто переходим к следующей серии, track выбирается через CURRENT_TRACK
-        await show_episode(chat_id, context, slug, next_ep)
-        return
+
+        anime = ANIME.get(slug)
+        if not anime:
+            await edit_caption_only(chat_id, context, "Аниме не найдено", build_main_menu_keyboard(chat_id))
+            return
+
+        episodes = anime.get("episodes", {})
+        if next_ep in episodes:
+            # сохраняем прогресс — т.к. нажали "следующая"
+            add_progress_on_next(chat_id, slug, next_ep)
+            await show_episode(chat_id, context, slug, next_ep)
+            return
+        else:
+            # следующей серии нет
+            status = anime.get("status", "ongoing")
+            if status == "finish":
+                # если тайтл завершён — убираем из продолжения (если был)
+                if chat_id in USER_PROGRESS and slug in USER_PROGRESS[chat_id]:
+                    del USER_PROGRESS[chat_id][slug]
+                    if not USER_PROGRESS[chat_id]:
+                        del USER_PROGRESS[chat_id]
+                    save_users()
+            await edit_caption_only(chat_id, context, "Следующей серии нет.", build_main_menu_keyboard(chat_id))
+            return
 
     # НОВЫЙ КЕЙС: следующая серия только в другой озвучке
     if data.startswith("next_other:"):
@@ -1494,6 +1516,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         episodes = anime.get("episodes", {})
         ep_obj = episodes.get(next_ep)
         if not ep_obj:
+            # следующей серии нет
+            status = anime.get("status", "ongoing")
+            if status == "finish":
+                if chat_id in USER_PROGRESS and slug in USER_PROGRESS[chat_id]:
+                    del USER_PROGRESS[chat_id][slug]
+                    if not USER_PROGRESS[chat_id]:
+                        del USER_PROGRESS[chat_id]
+                    save_users()
             await edit_caption_only(chat_id, context, "Следующей серии нет.", build_main_menu_keyboard(chat_id))
             return
 
@@ -1504,6 +1534,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Берём первую доступную озвучку у следующей серии
         some_track_name = next(iter(tracks.keys()))
+        # сохраняем прогресс — т.к. нажали "следующая (другая озвучка)"
+        add_progress_on_next(chat_id, slug, next_ep)
         await show_episode(chat_id, context, slug, next_ep, track_name=some_track_name)
         return
 
@@ -1651,7 +1683,7 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     SEARCH_MODE[chat_id] = False
 
 
-# ===============================  вэтой части?
+# ===============================
 # EXTRA CLEANUP ХЭНДЛЕР
 # ===============================
 async def cleanup_non_command_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1990,3 +2022,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
