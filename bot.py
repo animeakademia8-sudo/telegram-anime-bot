@@ -1934,9 +1934,8 @@ async def cmd_clear_ep(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await msg.reply_text(f"✅ У тайтла '{slug}' удалена серия {ep}.")
 
-
 # ===============================
-# /start
+# /start С ПОДДЕРЖКОЙ SLUG_СЕРИЯ
 # ===============================
 async def send_start_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -1950,6 +1949,26 @@ async def send_start_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         LAST_MESSAGE.pop(chat_id, None)
         LAST_MESSAGE_TYPE.pop(chat_id, None)
 
+    # ✅ ЕСЛИ ЗАПУСК С ПАРАМЕТРОМ
+    if context.args:
+        payload = context.args[0]  # sandad_1
+
+        if "_" in payload:
+            slug, ep_str = payload.split("_", 1)
+
+            if slug in ANIME:
+                try:
+                    ep = int(ep_str)
+                except ValueError:
+                    await show_main_menu(chat_id, context)
+                    return
+
+                if ep in ANIME[slug].get("episodes", {}):
+                    # ✅ ОТКРЫВАЕМ КОНКРЕТНУЮ СЕРИЮ
+                    await show_episode(chat_id, context, slug, ep)
+                    return
+
+    # ✅ ИНАЧЕ — ОБЫЧНОЕ МЕНЮ
     await show_main_menu(chat_id, context)
 
     try:
@@ -1957,7 +1976,6 @@ async def send_start_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await update.message.delete()
     except Exception:
         pass
-
 
 # ===============================
 # DEBUG: get file_id

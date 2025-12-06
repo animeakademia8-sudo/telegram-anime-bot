@@ -886,6 +886,14 @@
             "skip": "3:11"
           }
         }
+      },
+      "10": {
+        "tracks": {
+          "Aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB2Gk0ENiMfeT4WypWHIkOja5jcIWZAAI-igACROagSRj8rkpWYHecNgQ",
+            "skip": "2:48"
+          }
+        }
       }
     }
   },
@@ -1315,6 +1323,186 @@
           "anilibria": {
             "source": "BAACAgIAAyEFAATIctaUAAIBpmkwV6n8OlT9PRWH6xzhl3wP8OgUAAIvmgACBW-BSUZgeHXXTaMQNgQ",
             "skip": "1:52"
+          }
+        }
+      }
+    }
+  },
+  "vanpachmen3": {
+    "title": "Ванпачмен 3",
+    "genres": [
+      "сэйнэн",
+      "комедия",
+      "пародия",
+      "экшен",
+      "суперспособности"
+    ],
+    "status": "ongoing",
+    "episodes": {
+      "1": {
+        "tracks": {
+          "anilibria": {
+            "source": "BAACAgIAAyEFAATIctaUAAIBxGk0CJYoqwWyMV2LdYA-G4_9Zan_AAKeiQACROagSRP67SAYsv6cNgQ",
+            "skip": "1:41"
+          }
+        }
+      },
+      "4": {
+        "tracks": {
+          "anilibria": {
+            "source": "BAACAgIAAyEFAATIctaUAAIBxWk0CQxEhRlaIbRh6dVr0yrX23CTAAKliQACROagSR3jjCiNPkBHNgQ",
+            "skip": "1:41"
+          }
+        }
+      },
+      "5": {
+        "tracks": {
+          "anilibria": {
+            "source": "BAACAgIAAyEFAATIctaUAAIBxmk0CTxyG4-QBkrjwLGNikiRLRNSAAKoiQACROagSbFcdpfdyzMoNgQ",
+            "skip": null
+          }
+        }
+      },
+      "2": {
+        "tracks": {
+          "anilibria": {
+            "source": "BAACAgIAAyEFAATIctaUAAIBx2k0CUJDKumZ-pD1jPsyjvHLmjoAA6mJAAJE5qBJuy5Lnefasls2BA",
+            "skip": "1:41"
+          }
+        }
+      },
+      "3": {
+        "tracks": {
+          "anilibria": {
+            "source": "BAACAgIAAyEFAATIctaUAAIByGk0CVzwxpDoh8NeqVJAXsPF-xAtAAKsiQACROagSavq2pUg3EO2NgQ",
+            "skip": "1:41"
+          }
+        }
+      },
+      "6": {
+        "tracks": {
+          "anilibria": {
+            "source": "BAACAgIAAyEFAATIctaUAAIByWk0Ccaae1BE4fYqhjvOmn1w1qRAAAKxiQACROagSQyPKIg9eid0NgQ",
+            "skip": "1:41"
+          }
+        }
+      },
+      "7": {
+        "tracks": {
+          "anilibria": {
+            "source": "BAACAgIAAyEFAATIctaUAAIBymk0CvCfbbp0w4BAUFcDuHTgCgaVAALBiQACROagSWxT7Cj0xBLaNgQ",
+            "skip": "3:43"
+          }
+        }
+      },
+      "8": {
+        "tracks": {
+          "anilibria": {
+            "source": "BAACAgIAAyEFAATIctaUAAIBy2k0CvaEO3z0kgr46DUkcS-3Sdn0AALCiQACROagSaBBKz-_tsCLNgQ",
+            "skip": "2:57"
+          }
+        }
+      }
+    }
+  },
+  "poveliteldemonov2099": {
+    "title": "Повелитель демонов 2099",
+    "genres": [
+      "приключения",
+      "фантастика",
+      "фэнтези",
+      "экшен",
+      "магия",
+      "киберпанк",
+      "альтернативная реальность"
+    ],
+    "status": "ongoing",
+    "episodes": {
+      "2": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAIBzWk0DX0bvpzKNX0BnhnuIUHkbi8FAAIMigACROagSTgcemgysHKcNgQ",
+            "skip": "5:02"
+          }
+        }
+      },
+      "1": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAIBzmk0Dajt9l_O8K0xcBpcmq2ujZLMAAIPigACROagSdINUnV8VvewNgQ",
+            "skip": ""
+          }
+        }
+      },
+      "3": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAIBz2k0Db0ZoAhJZHfokAckeoycvJk-AAISigACROagSQipEszBAgABCTYE",
+            "skip": "3:11"
+          }
+        }
+      },
+      "6": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB0Gk0DjHzbVytyRF3MG-NxEPt58ssAAIWigACROagSenfNR3H-5Y3NgQ",
+            "skip": "5:26"
+          }
+        }
+      },
+      "5": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB0Wk0DmRN3QzyMnVWuYqY3Z_wCfDdAAIaigACROagSef2lxuzXikUNgQ",
+            "skip": "1:30"
+          }
+        }
+      },
+      "4": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB0mk0DmS2EDGOm_eiYmTC8VxXDp_gAAIbigACROagSfpS_5Ho5Q7hNgQ",
+            "skip": "1:30"
+          }
+        }
+      },
+      "7": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB02k0Dmol127LOFdNKjRReNem1kjYAAIdigACROagScOwGIl5w6aUNgQ",
+            "skip": "2:44"
+          }
+        }
+      },
+      "8": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB1Gk0DvHRrR3f9bvrUd9eu1yDLAAEJYoAAkTmoElir9ywa436wjYE",
+            "skip": "3:08"
+          }
+        }
+      },
+      "9": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB1Wk0D1WbZibWXS7wRAW3KXUd6qiWAAIqigACROagSWvnsviG-BMjNgQ",
+            "skip": "1:30"
+          }
+        }
+      },
+      "10": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB1mk0EBRHsGd4PruPrjtEsnMdPk_SAAI1igACROagSR_U0SWskEsyNgQ",
+            "skip": "1:30"
+          }
+        }
+      },
+      "11": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB12k0EIUL4Nx9tP2z2zNgIru2i2AnAAI6igACROagSZw3ron2GbfnNgQ",
+            "skip": "1:30"
           }
         }
       }
