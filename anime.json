@@ -672,6 +672,14 @@
             "skip": "1:30"
           }
         }
+      },
+      "8": {
+        "tracks": {
+          "Дубляжная": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB2mk0JQk19sxNgysyu3S7kGLIrrtiAAJmiwACROagSSafSISR4QHvNgQ",
+            "skip": "1:30"
+          }
+        }
       }
     }
   },
@@ -1416,7 +1424,7 @@
       "киберпанк",
       "альтернативная реальность"
     ],
-    "status": "ongoing",
+    "status": "finish",
     "episodes": {
       "2": {
         "tracks": {
@@ -1503,6 +1511,170 @@
           "aniliberty": {
             "source": "BAACAgIAAyEFAATIctaUAAIB12k0EIUL4Nx9tP2z2zNgIru2i2AnAAI6igACROagSZw3ron2GbfnNgQ",
             "skip": "1:30"
+          }
+        }
+      },
+      "12": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB2Wk0Iv64OMBQopDDBJEEKhiujl6dAAJLiwACROagSQjXnQGDx2uJNgQ",
+            "skip": null
+          }
+        }
+      }
+    }
+  },
+  "lunoepytisestvie": {
+    "title": "Лунное путешествие приведет к новому миру",
+    "genres": [
+      "комедия",
+      "приключения",
+      "экшен",
+      "фэнтези",
+      "исекай"
+    ],
+    "status": "finish",
+    "episodes": {
+      "1": {
+        "tracks": {
+          "anilibria": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB3Gk0JkJu45zU2xz7BYi314bY1lvyAAJ4iwACROagSQmfKBcpFDUVNgQ",
+            "skip": "2:16"
+          }
+        }
+      },
+      "2": {
+        "tracks": {
+          "anilibria": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB3Wk0JysSIQm4XazZ0YG7hnu38tujAAKGiwACROagSW7tiu1Rsvj5NgQ",
+            "skip": "2:36"
+          }
+        }
+      },
+      "3": {
+        "tracks": {
+          "anilibria": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB3mk0J_yP36AXgUz78QhUVAxNXDf1AAKXiwACROagSU-zuB6ZRm2QNgQ",
+            "skip": "2:12"
+          }
+        }
+      },
+      "4": {
+        "tracks": {
+          "anilibria": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB32k0KO_yiSmFqMX-i_PaqXs_Ss2HAAKjiwACROagSf3GJvwsIugvNgQ",
+            "skip": "3:12"
+          }
+        }
+      },
+      "5": {
+        "tracks": {
+          "anilibria": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB4Gk0Kf0KFwwDBAuQ4DdpzP_-Vb_GAAKxiwACROagSWzdj9ZuBrW4NgQ",
+            "skip": "2:56"
+          }
+        }
+      },
+      "6": {
+        "tracks": {
+          "anilibria": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB4Wk0K6mBJr4cqa6RMiyMt_pljtLEAALIiwACROagSa4P0sr7HeFVNgQ",
+            "skip": "2:45"
+          }
+        }
+      },
+      "7": {
+        "tracks": {
+          "anilibria": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB4mk0LMKM51NhNWF85gzkFebHu6p4AALliwACROagSfDD8eBlP4GGNgQ",
+            "skip": "1:54"
+          }
+        }
+      },
+      "8": {
+        "tracks": {
+          "anilibria": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB42k0LefoanCTm0Ow7arHIt_xWXn2AAIKjAACROagSVF4nQo58ExANgQ",
+            "skip": "2:58"
+          }
+        }
+      },
+      "9": {
+        "tracks": {
+          "anilibria": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB5Gk0MtrlF-FVAAEfhW_fElAkZ_IIQgACZowAAkTmoEljhtweoOIg7TYE",
+            "skip": "1:59"
+          }
+        }
+      }
+    }
+  },
+  "tacugifadzimoto": {
+    "title": "Тацуки Фуджимото: С 17 до 26",
+    "genres": [
+      "комедия",
+      "приключения",
+      "экшен",
+      "сёнэн",
+      "драма",
+      "романтика",
+      "школьная жизнь"
+    ],
+    "status": "ongoing",
+    "episodes": {
+      "1": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB5mk0OielI0hVYPivx_f9j7Psagz-AALIjAACROagSQccGXvGbeNBNgQ",
+            "skip": ""
+          }
+        }
+      },
+      "3": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB52k0OosLdPBDhIEZ-vEOEJLxOHdiAALSjAACROagSfvsEyFjZyEHNgQ",
+            "skip": ""
+          }
+        }
+      },
+      "2": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB6Gk0Op-iSMyKcbugY1pq5mf4o23UAALTjAACROagSZAo9PULu3lHNgQ",
+            "skip": ""
+          }
+        }
+      },
+      "4": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB6Wk0OqQ-CJjrr7LtG8iJ2DdDAis5AALUjAACROagSdMfJZQahQSmNgQ",
+            "skip": ""
+          }
+        }
+      },
+      "5": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB6mk0OvgbXD7gDNNSQQABu0bxUItfUAAC2IwAAkTmoEkx_PF4MdQqRDYE",
+            "skip": ""
+          }
+        }
+      },
+      "6": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB62k0Oyu6nx8MhJZHBR_-8UUk3rCcAALcjAACROagSa-eqsWn-iQuNgQ",
+            "skip": ""
+          }
+        }
+      },
+      "7": {
+        "tracks": {
+          "aniliberty": {
+            "source": "BAACAgIAAyEFAATIctaUAAIB7Gk0O5_2qcaoFH-LzrMOA3omqiT0AALhjAACROagScPjCR2MlDAZNgQ",
+            "skip": ""
           }
         }
       }

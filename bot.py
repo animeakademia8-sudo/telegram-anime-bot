@@ -1935,40 +1935,48 @@ async def cmd_clear_ep(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.reply_text(f"✅ У тайтла '{slug}' удалена серия {ep}.")
 
 # ===============================
-# /start С ПОДДЕРЖКОЙ SLUG_СЕРИЯ
+# /start (ФИНАЛЬНАЯ ВЕРСИЯ — БЕЗ НАКОПЛЕНИЯ)
 # ===============================
 async def send_start_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
 
+    # ✅ удаляем предыдущее сообщение бота
     last_id = LAST_MESSAGE.get(chat_id)
     if last_id:
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=last_id)
         except Exception:
             pass
-        LAST_MESSAGE.pop(chat_id, None)
-        LAST_MESSAGE_TYPE.pop(chat_id, None)
 
-    # ✅ ЕСЛИ ЗАПУСК С ПАРАМЕТРОМ
+    LAST_MESSAGE.pop(chat_id, None)
+    LAST_MESSAGE_TYPE.pop(chat_id, None)
+
+    # ✅ СНАЧАЛА обрабатываем deeplink
     if context.args:
-        payload = context.args[0]  # sandad_1
+        payload = context.args[0]   # например: sandad_1
 
         if "_" in payload:
             slug, ep_str = payload.split("_", 1)
 
-            if slug in ANIME:
+            try:
+                ep = int(ep_str)
+            except ValueError:
+                ep = None
+
+            if ep and slug in ANIME and ep in ANIME[slug]["episodes"]:
+                # ✅ открываем серию
+                await show_episode(chat_id, context, slug, ep)
+
+                # ✅ ВОТ ЭТО И ЕСТЬ ФИКС — УДАЛЯЕМ /start
                 try:
-                    ep = int(ep_str)
-                except ValueError:
-                    await show_main_menu(chat_id, context)
-                    return
+                    if update.message:
+                        await update.message.delete()
+                except Exception:
+                    pass
 
-                if ep in ANIME[slug].get("episodes", {}):
-                    # ✅ ОТКРЫВАЕМ КОНКРЕТНУЮ СЕРИЮ
-                    await show_episode(chat_id, context, slug, ep)
-                    return
+                return  # ⛔ меню больше не вызываем
 
-    # ✅ ИНАЧЕ — ОБЫЧНОЕ МЕНЮ
+    # ✅ обычный старт без параметров
     await show_main_menu(chat_id, context)
 
     try:
